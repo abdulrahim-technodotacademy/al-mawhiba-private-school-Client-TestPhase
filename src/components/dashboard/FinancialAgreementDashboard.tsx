@@ -1029,7 +1029,7 @@ type AgreementStatus =
                 Cancel
               </Button>
 
-  <Button
+<Button
     className="bg-green-600 hover:bg-green-700"
     onClick={async () => {
       if (!guardianSignaturePad || !employerSignaturePad || 
@@ -1037,21 +1037,18 @@ type AgreementStatus =
         return;
       }
 
-      // Check if both signatures are empty
       if (guardianSignaturePad.isEmpty() || employerSignaturePad.isEmpty()) {
         alert('Please provide both guardian and employer signatures');
         return;
       }
-       setIsProcessing(true); 
+      
+      setIsProcessing(true); 
 
       try {
         const accessToken = localStorage.getItem("accessToken");
         if (!accessToken) throw new Error('Authentication required');
         
         const agreementId = currentSigningAgreement.rawData.financial_agreement[0].id;
-
-        console.log(`Signing agreement with ID: ${agreementId}`);
-        
 
         // 1. Download original PDF
         const pdfResponse = await fetch(
@@ -1060,7 +1057,7 @@ type AgreementStatus =
         );
         if (!pdfResponse.ok) throw new Error('Failed to download PDF');
 
-        // 2. Convert signatures to images with white background
+        // 2. Convert signatures to transparent PNG images
         const convertSignature = (signaturePad) => {
           const signatureCanvas = signaturePad.getCanvas();
           const tempCanvas = document.createElement('canvas');
@@ -1068,8 +1065,7 @@ type AgreementStatus =
           tempCanvas.height = signatureCanvas.height;
           
           const ctx = tempCanvas.getContext('2d');
-          ctx.fillStyle = 'white';
-          ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+          ctx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
           ctx.drawImage(signatureCanvas, 0, 0);
           
           return tempCanvas.toDataURL('image/png');
@@ -1083,8 +1079,7 @@ type AgreementStatus =
           fetch(employerSignatureUrl).then(res => res.arrayBuffer())
         ]);
 
-        // 3. Load PDF and add both signatures
-  // 3. Load PDF and add both signatures with proper positioning
+        // 3. Load PDF and add transparent signatures
         const pdfDoc = await PDFDocument.load(await pdfResponse.arrayBuffer());
         const guardianImage = await pdfDoc.embedPng(guardianPngBytes);
         const employerImage = await pdfDoc.embedPng(employerPngBytes);
@@ -1093,87 +1088,88 @@ type AgreementStatus =
         const page = pages[1]; // Second page for signatures
         const { width, height } = page.getSize();
               
+        // Draw signatures with transparency preserved
         page.drawImage(guardianImage, {
-          x: 50,           // Left position (reduced from 100)
-          y: 180,          // Vertical position (same as before)
-          width: 120,      // Signature width
-          height: 50,      // Signature height
+          x: 50,
+          y: 180,
+          width: 120,
+          height: 50,
+          opacity: 1 
         });
 
-        // Employer signature position (right side)
         page.drawImage(employerImage, {
-          x: width - 170,  // Right position (page width - signature width - margin)
-          y: 180,          // Vertical position aligned with guardian
-          width: 120,      // Signature width
-          height: 50,      // Signature height
+          x: width - 170,
+          y: 180,
+          width: 120,
+          height: 50,
+          opacity: 1
         });
 
         // 4. Save and verify before upload
         const signedPdfBytes = await pdfDoc.save();
         const blob = new Blob([signedPdfBytes], { type: 'application/pdf' });
         
-        // DEBUG: Force download for verification
+        // Optional: Preview download (for debugging)
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = 'signed_agreement_preview.pdf';
         a.click();
 
-        // 5. Upload after manual verification
+        // 5. Upload signed PDF
         const pdfname = `FA-${new Date().getFullYear()}-${Math.floor(Math.random() * 9000 + 1000)}`;
         const formData = new FormData();
-           formData.append('agreement_pdf', blob, `signed_agreement_${pdfname.replace(/\//g, '-')}.pdf`);
-          formData.append('is_verified_agreement_pdf', 'true'); // Set to false here
+        formData.append('agreement_pdf', blob, `signed_agreement_${pdfname.replace(/\//g, '-')}.pdf`);
+        formData.append('is_verified_agreement_pdf', 'false');
 
-          const response = await fetch(
-            `${import.meta.env.VITE_API_BASE_URL}/students/financial-agreement/${agreementId}/`,
-            {
-              method: "PATCH",
-              headers: { "Authorization": `Bearer ${accessToken}` },
-              body: formData,
-            }
-          );
+        const response = await fetch(
+          `${import.meta.env.VITE_API_BASE_URL}/students/financial-agreement/${agreementId}/`,
+          {
+            method: "PATCH",
+            headers: { "Authorization": `Bearer ${accessToken}` },
+            body: formData,
+          }
+        );
 
-          if (!response.ok) throw new Error('Upload failed');
-          
-          // Update UI state
-          const updatedStudents = pendingStudents.map(student => 
-            student.financial_agreement?.id === agreementId ? {
-              ...student,
-              financial_agreement: { 
-                ...student.financial_agreement, 
-                is_verified_agreement_pdf: true // Also set to false in UI state
-              },
-              status: 'signed',
-              statusAr: 'تم التوقيع'
-            } : student
-          );
-          
-          setPendingStudents(updatedStudents);
-          setIsSigning(false);
-          setCurrentSigningAgreement(null);
-          guardianSignaturePad.clear();
-          employerSignaturePad.clear();
-          
-          alert('PDF successfully submitted!');
+        if (!response.ok) throw new Error('Upload failed');
         
+        // Update UI state
+        const updatedStudents = pendingStudents.map(student => 
+          student.financial_agreement?.id === agreementId ? {
+            ...student,
+            financial_agreement: { 
+              ...student.financial_agreement, 
+              is_verified_agreement_pdf: true
+            },
+            status: 'signed',
+            statusAr: 'تم التوقيع'
+          } : student
+        );
+        
+        setPendingStudents(updatedStudents);
+        setIsSigning(false);
+        setCurrentSigningAgreement(null);
+        guardianSignaturePad.clear();
+        employerSignaturePad.clear();
+        
+        alert('PDF successfully submitted!');
       
       } catch (error) {
         console.error('Error:', error);
         alert(`Error: ${error.message}`);
-      }finally{
+      } finally {
          setIsProcessing(false); 
       }
     }}
-      disabled={isProcessing} 
-  >
+    disabled={isProcessing} 
+>
   {isProcessing ? (
     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
   ) : (
     <CheckCircle className="mr-2 h-4 w-4" />
   )}
   {isProcessing ? 'Processing...' : 'Sign & Submit'}
-  </Button>
+</Button>
             </div>
           </div>
         ) : (
