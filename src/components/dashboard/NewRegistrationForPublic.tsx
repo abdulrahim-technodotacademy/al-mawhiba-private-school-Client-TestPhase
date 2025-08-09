@@ -189,19 +189,33 @@ function NewRegistrationForPublic() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-
-    if (
-      !formData.en_first_name ||
-      !formData.ar_first_name ||
-      !formData.date_of_birth ||
-      !formData.name_en ||
-      !formData.name_ar ||
-      !formData.phone
-    ) {
-      toast.error("Please fill in all required fields");
-      setIsSubmitting(false);
-      return;
-    }
+        if (
+          !formData.en_first_name ||
+          !formData.ar_first_name ||
+          !formData.date_of_birth ||
+          !formData.phone ||
+          !formData.gender ||
+          !formData.nationality ||
+          !formData.address ||
+          !formData.city ||
+          !formData.state ||
+          !formData.postal_code ||
+          !formData.name_en ||
+          !formData.name_ar ||
+          !formData.email ||
+          !formData.relationship ||
+          !formData.passport_number||
+          !formData.work_phone ||
+          !formData.occupation ||
+          !formData.home_phone ||
+          !formData.mobile ||
+          !formData.country 
+          
+        ) {
+          toast.error("Please fill in all required fields");
+          setIsSubmitting(false);
+          return;
+        }
 
     try {
       // 1. Build JSON objects
