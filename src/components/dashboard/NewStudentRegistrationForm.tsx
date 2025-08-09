@@ -311,35 +311,7 @@ const NewStudentRegistrationForm = () => {
 
       if (token) {
         window.location.href = `/student/${result.data.student.id}`;
-      } else {
-        await Swal.fire({
-          title:
-            '<span >Registration Successful!</span>',
-          html: `
-                      <div style="text-align: left">
-                          <p style="margin-bottom: 1rem">Your registration has been submitted successfully.</p>
-                          <p style="margin-bottom: 0.5rem">Admission Number:<strong style="color: rgb(102 42 20)">${result.data.student.admission_number}</strong></p>
-                          <p style="margin-bottom: 0.5rem">Student Name:<strong style="color: rgb(102 42 20)"> ${result.data.student.en_first_name} ${result.data.student.en_last_name} </strong></p>
-                          <p style="font-size: 0.875rem; color: #6b7280">Please keep this number for future reference.</p>
-                      </div>
-                  `,
-          icon: "success",
-          confirmButtonText: "OK",
-          width: "500px",
-          customClass: {
-            popup: "rounded-lg border-2 border-brown-200",
-            title: "text-2xl font-bold",
-            htmlContainer: "text-left",
-          },
-          background: "#fffaf7", // Light warm background
-          showClass: {
-            popup: "animate__animated animate__fadeInDown",
-          },
-          hideClass: {
-            popup: "animate__animated animate__fadeOutUp",
-          },
-        });
-      }
+      } 
 
       // Reset form if needed
       setFormData({

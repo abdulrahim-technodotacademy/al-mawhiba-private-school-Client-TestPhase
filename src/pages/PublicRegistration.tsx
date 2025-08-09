@@ -1,8 +1,5 @@
 import NewRegistrationForPublic from '@/components/dashboard/NewRegistrationForPublic'
-import NewStudentRegistrationForm from '@/components/dashboard/NewStudentRegistrationForm'
-import DashboardLayout from '@/components/layout/DashboardLayout'
 import { Home } from 'lucide-react'
-import React from 'react'
 
 function PublicRegistration() {
   return (
@@ -37,7 +34,7 @@ function PublicRegistration() {
             </div>
           </div>
         </header>
-    <NewStudentRegistrationForm/>
+    <NewRegistrationForPublic/>
     {/* </DashboardLayout> */}
     </>
   )
