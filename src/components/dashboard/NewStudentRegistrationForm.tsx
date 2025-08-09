@@ -298,53 +298,55 @@ const handleSubmit = async (e: React.FormEvent) => {
 
     if (!response.ok) {
       console.error("API Error:", result);
+       toast.success(result.message);
       throw new Error(result.message || "Failed to submit registration");
+         
     }
 
     toast.success("Registration submitted successfully!");
     // Reset form if needed
-   setFormData({
-   admission_number: "",
-    en_first_name: "",
-    en_middle_name: "",
-    en_last_name: "",
-    ar_first_name: "",
-    ar_middle_name: "",
-    ar_last_name: "",
-    photo: null as File | null,
-    email: "",
-    phone: "",
-    date_of_birth: "",
-    gender: "",
-    religion: "",
-    nationality: "",
-    address: "",
-    city: "",
-    state: "",
-    postal_code: "",
-    country: "",
-    admission_class: "",
-    section: "",
-    admission_date: "",
-    previous_school: "",
-    has_special_needs: false,
-    special_needs_details: "",
+//    setFormData({
+//    admission_number: "",
+//     en_first_name: "",
+//     en_middle_name: "",
+//     en_last_name: "",
+//     ar_first_name: "",
+//     ar_middle_name: "",
+//     ar_last_name: "",
+//     photo: null as File | null,
+//     email: "",
+//     phone: "",
+//     date_of_birth: "",
+//     gender: "",
+//     religion: "",
+//     nationality: "",
+//     address: "",
+//     city: "",
+//     state: "",
+//     postal_code: "",
+//     country: "",
+//     admission_class: "",
+//     section: "",
+//     admission_date: "",
+//     previous_school: "",
+//     has_special_needs: false,
+//     special_needs_details: "",
 
-    name_en: "",
-    name_ar: "",
-    phone: "",
-    email: "",
-    address: "",
-    relationship: "",
-    national_id: "",
-    passport_number: "",
-    work_phone: "",
-    home_phone: "",
-    mobile: "",
-    occupation: "",
+//     name_en: "",
+//     name_ar: "",
+//     phone: "",
+//     email: "",
+//     address: "",
+//     relationship: "",
+//     national_id: "",
+//     passport_number: "",
+//     work_phone: "",
+//     home_phone: "",
+//     mobile: "",
+//     occupation: "",
 
-  student_documents: [],
-});
+//   student_documents: [],
+// });
 
   } catch (error) {
     console.error("Registration error:", error);
@@ -353,6 +355,7 @@ const handleSubmit = async (e: React.FormEvent) => {
     setIsSubmitting(false);
   }
 };
+
 
   const handleFileUpload = () => {
     if (!currentDocument.type || !currentDocument.file) {
@@ -389,14 +392,7 @@ const handleSubmit = async (e: React.FormEvent) => {
     }
   };
 
-  const convertToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = (error) => reject(error);
-    });
-  };
+
 
   const calculateAge = (dateOfBirth: string): number => {
     const dob = new Date(dateOfBirth);
@@ -431,102 +427,7 @@ const handleSubmit = async (e: React.FormEvent) => {
 
 
 
-const phoneticMap: { [key: string]: string } = {
-  sh: "ش", 
-  kh: "خ", 
-  th: "ث", 
-  dh: "ذ", 
-  gh: "غ",
-  ch: "تش", 
-  ph: "ف", 
-  zh: "ژ",
-  aa: "ع",
-  ee: "ي",
-  oo: "و",
-  ou: "و",
-  ai: "اي",
-  ei: "اي",
-  ay: "اي"
-};
 
-const charMap: { [key: string]: string } = {
-  // Basic letters
-  a: "ا", 
-  b: "ب", 
-  c: "ك", 
-  d: "د", 
-  e: "ي", 
-  f: "ف",
-  g: "ج", 
-  h: "ه", 
-  i: "ي", 
-  j: "ج", 
-  k: "ك", 
-  l: "ل",
-  m: "م", 
-  n: "ن", 
-  o: "و", 
-  p: "ب", 
-  q: "ق", 
-  r: "ر",
-  s: "س", 
-  t: "ت", 
-  u: "و", 
-  v: "ف", 
-  w: "و", 
-  x: "كس",
-  y: "ي", 
-  z: "ز",
-  
-  // Special characters
-  "'": "ء", 
-  "-": "-", 
-  " ": " ",
-  
-  // Vowel variations
-  á: "ا", 
-  â: "ا", 
-  à: "ا",
-  é: "ي", 
-  ê: "ي", 
-  è: "ي",
-  í: "ي", 
-  î: "ي", 
-  ì: "ي",
-  ó: "و", 
-  ô: "و", 
-  ò: "و",
-  ú: "و", 
-  û: "و", 
-  ù: "و",
-  ý: "ي",
-  
-  // Less common but possible in names
-  ç: "س", 
-  ñ: "ن", 
-  ü: "يو",
-  ß: "س", 
-  ø: "و", 
-  å: "و"
-};
-
-const transliterateToArabic = (input: string) => {
-  let result = "";
-  let i = 0;
-  const lower = input.toLowerCase();
-
-  while (i < lower.length) {
-    const twoChar = lower.substring(i, i + 2);
-    if (phoneticMap[twoChar]) {
-      result += phoneticMap[twoChar];
-      i += 2;
-      continue;
-    }
-    result += charMap[lower[i]] || lower[i];
-    i++;
-  }
-  return result;
-};
   return (
     <>
      {(isLoading.departments || isLoading.sections || isSubmitting) && <FullPageLoader />}

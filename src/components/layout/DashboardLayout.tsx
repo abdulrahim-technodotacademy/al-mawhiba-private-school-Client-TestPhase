@@ -15,6 +15,7 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const handleLogout = () => {
     // Remove access token from localStorage
     localStorage.removeItem("accessToken");
+    localStorage.removeItem("refreshToken");
     
     toast.success("Logged out successfully");
     navigate("/");
