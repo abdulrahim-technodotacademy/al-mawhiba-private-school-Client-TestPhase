@@ -442,468 +442,367 @@ const filteredStudents = students.filter((student) => {
 });
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">
-            Registration Officer
-          </h1>
-          <p className="text-gray-600" dir="rtl">
-            موظف تسجيل
-          </p>
-        </div>
-        <Button
-          className="bg-blue-600 hover:bg-blue-700"
-          onClick={() => setActiveTab("new")}
-        >
-          <UserPlus className="mr-2 h-4 w-4" />
-          New Registration | تسجيل جديد
-        </Button>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex space-x-4 border-b">
-        <button
-          className={`px-6 py-3 font-medium ${
-            activeTab === "new"
-              ? "border-b-2 border-blue-600 text-blue-600"
-              : "text-gray-600"
-          }`}
-          onClick={() => setActiveTab("new")}
-        >
-          <UserPlus className="inline mr-2 h-4 w-4" />
-          New Registration | تسجيل جديد
-        </button>
-        <button
-          className={`px-6 py-3 font-medium ${
-            activeTab === "search"
-              ? "border-b-2 border-blue-600 text-blue-600"
-              : "text-gray-600"
-          }`}
-          onClick={() => {
-            setActiveTab("search");
-            loadStudents();
-          }}
-        >
-          <Search className="inline mr-2 h-4 w-4" />
-          Search & Verify | البحث والتحقق
-        </button>
-        <button
-          className={`px-6 py-3 font-medium ${
-            activeTab === "promotion"
-              ? "border-b-2 border-blue-600 text-blue-600"
-              : "text-gray-600"
-          }`}
-          onClick={() => {
-            setActiveTab("promotion");
-            loadStudents();
-          }}
-        >
-          <Users className="inline mr-2 h-4 w-4" />
-          Student Promotion | ترقية الطلاب
-        </button>
-      </div>
-
-      {/* Content */}
-      <div className="space-y-6">
-        {activeTab === "search" && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex justify-between items-center">
-                <span>Student Verification | التحقق من الطلاب</span>
-                <div className="flex gap-4">
-                  <Select
-                    value={verificationStatus}
-                    onValueChange={(value: any) => setVerificationStatus(value)}
-                  >
-                    <SelectTrigger className="w-[150px]">
-                      <SelectValue placeholder="Filter status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Students</SelectItem>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="verified">Verified</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <div className="relative w-64">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="Search students..."
-                      className="pl-10 pr-4 py-2 border rounded-md w-full text-sm"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                  </div>
-                </div>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="h-8 w-8 animate-spin" />
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Student Name</TableHead>
-                      <TableHead>Class</TableHead>
-                      <TableHead>Registration Date</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredStudents.map((student) => (
-                      <TableRow key={student.id}>
-                        <TableCell
-                          className="cursor-pointer hover:underline hover:text-blue-600"
-                          onClick={() => navigate(`/student/${student.id}`)}
-                        >
-                          {student.name_en}
-                          {student.isNewRegistration && (
-                            <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
-                              New
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell>{student.currentClass} {student.currentSection}</TableCell>
-                        <TableCell>{student.registrationDate}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {student.status === "verified" && (
-                              <CheckCircle2 className="h-4 w-4 text-green-500" />
-                            )}
-                            {student.status === "pending" && (
-                              <Loader2 className="h-4 w-4 animate-spin text-yellow-500" />
-                            )}
-                            {student.status === "rejected" && (
-                              <AlertCircle className="h-4 w-4 text-red-500" />
-                            )}
-                            <span className="capitalize">{student.status}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right space-x-2">
-                          {student.status === "pending" && (
-                            <>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => verifyStudent(student.id)}
-                                disabled={loading}
-                              >
-                                Verify
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-red-600"
-                                onClick={() => rejectStudent(student.id)}
-                                disabled={loading}
-                              >
-                                Reject
-                              </Button>
-                            </>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-              {filteredStudents.length === 0 && !loading && (
-                <div className="text-center py-8 text-gray-500">
-                  No students found matching your criteria
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {activeTab === "promotion" && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex justify-between items-center">
-                <span>Student Promotion | ترقية الطلاب</span>
-                <div className="relative w-64">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Search students..."
-                    className="pl-10 pr-4 py-2 border rounded-md w-full text-sm"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
-                </div>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center gap-4">
-                <Select onValueChange={handleClassChange} value={selectedClass}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Select class" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {classList.map((option) => (
-                      <SelectItem key={option} value={option}>
-                        {option}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {selectedClass ? (
-                filteredStudents.length > 0 ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Student Name</TableHead>
-                        <TableHead>Current Class</TableHead>
-                        <TableHead>Next Class</TableHead>
-                        <TableHead>Next Section</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Action</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredStudents.map((student) => (
-                        <TableRow key={student.id}>
-                          <TableCell>
-                            {student.name_en}
-                            {student.isNewRegistration && (
-                              <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
-                                New
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell>{student.currentClass} {student.currentSection}</TableCell>
-                         
-                            <TableCell>
-                                <Select
-                                    value={student.selectedDepartment || ""}
-                                    onValueChange={(value) => {
-                                    const updatedStudents = students.map((s) =>
-                                        s.id === student.id
-                                        ? {
-                                            ...s,
-                                            selectedDepartment: value,
-                                            filteredSections: sections.filter((sec) => sec.department === value),
-                                            selectedSection: "", // reset section
-                                            }
-                                        : s
-                                    );
-                                    setStudents(updatedStudents);
-                                    }}
-                                >
-                                    <SelectTrigger className="w-[120px] md:w-[180px] text-sm">
-                                    <SelectValue placeholder="Select Department" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                    {departments.map((dept) => (
-                                        <SelectItem key={dept.id} value={dept.id}>
-                                        {dept.department_name}
-                                        </SelectItem>
-                                    ))}
-                                    </SelectContent>
-                                </Select>
-                                </TableCell>
-
-
-                                <TableCell>
-                        <Select
-                            value={student.selectedSection || ""}
-                            onValueChange={(value) => {
-                            const updatedStudents = students.map((s) =>
-                                s.id === student.id ? { ...s, selectedSection: value } : s
-                            );
-                            setStudents(updatedStudents);
-                            }}
-                        >
-                            <SelectTrigger className="w-[120px] md:w-[180px] text-sm">
-                            <SelectValue placeholder="Select Section" />
-                            </SelectTrigger>
-                            <SelectContent>
-                            {(student.filteredSections || []).map((sec) => (
-                                <SelectItem key={sec.id} value={sec.id}>
-                                {sec.name}
-                                </SelectItem>
-                            ))}
-                            </SelectContent>
-                        </Select>
-                        </TableCell>
-
-                          <TableCell>
-                            <span
-                              className={`px-2 py-1 rounded-full text-xs ${
-                                student.status === "verified"
-                                  ? "bg-green-100 text-green-800"
-                                  : student.status === "pending"
-                                  ? "bg-yellow-100 text-yellow-800"
-                                  : "bg-red-100 text-red-800"
-                              }`}
-                            >
-                              {student.status}
-                            </span>
-                          </TableCell>
-<TableCell className="text-right">
-  <Button
-    variant="outline"
-    size="sm"
-    onClick={async () => {
-      await promoteStudent(
-        student.id, 
-        student.selectedDepartment, 
-        student.selectedSection
-      );
-    }}
-    disabled={
-      promotingStudentId !== null || 
-      student.status !== "verified" ||
-      !student.selectedDepartment ||
-      !student.selectedSection
-    }
-  >
-    {promotingStudentId === student.id ? (
-      <Loader2 className="h-4 w-4 animate-spin" />
-    ) : (
-      "Promote"
-    )}
-  </Button>
-</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    {searchTerm
-                      ? "No students match your search criteria"
-                      : "No students found in this class"}
-                  </div>
-                )
-              ) : (
-                   <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Student Name</TableHead>
-                        <TableHead>Current Class</TableHead>
-                        <TableHead>Next Class</TableHead>
-                        <TableHead>Next Section</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Action</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredStudents.map((student) => (
-                        <TableRow key={student.id}>
-                          <TableCell>
-                            {student.name_en}
-                            {student.isNewRegistration && (
-                              <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
-                                New
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell>{student.currentClass} {student.currentSection}</TableCell>
-                            <TableCell>
-                            <Select
-                                value={student.selectedDepartment || ""}
-                                onValueChange={(value) => {
-                                const updatedStudents = students.map((s) =>
-                                    s.id === student.id
-                                    ? {
-                                        ...s,
-                                        selectedDepartment: value,
-                                        filteredSections: sections.filter((sec) => sec.department === value),
-                                        selectedSection: "", // reset section
-                                        }
-                                    : s
-                                );
-                                setStudents(updatedStudents);
-                                }}
-                            >
-                                <SelectTrigger className="w-[120px] md:w-[180px] text-sm">
-                                <SelectValue placeholder="Select Department" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                {departments.map((dept) => (
-                                    <SelectItem key={dept.id} value={dept.id}>
-                                    {dept.department_name}
-                                    </SelectItem>
-                                ))}
-                                </SelectContent>
-                            </Select>
-                            </TableCell>
-                            <TableCell>
-                            <Select
-                                value={student.selectedSection || ""}
-                                onValueChange={(value) => {
-                                const updatedStudents = students.map((s) =>
-                                    s.id === student.id ? { ...s, selectedSection: value } : s
-                                );
-                                setStudents(updatedStudents);
-                                }}
-                            >
-                                <SelectTrigger className="w-[120px] md:w-[180px] text-sm">
-                                <SelectValue placeholder="Select Section" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                {(student.filteredSections || []).map((sec) => (
-                                    <SelectItem key={sec.id} value={sec.id}>
-                                    {sec.name}
-                                    </SelectItem>
-                                ))}
-                                </SelectContent>
-                            </Select>
-                            </TableCell>
-                          <TableCell>
-                            <span
-                              className={`px-2 py-1 rounded-full text-xs ${
-                                student.status === "verified"
-                                  ? "bg-green-100 text-green-800"
-                                  : student.status === "pending"
-                                  ? "bg-yellow-100 text-yellow-800"
-                                  : "bg-red-100 text-red-800"
-                              }`}
-                            >
-                              {student.status}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-right">
-                             <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                    promoteStudent(student.id, student.selectedDepartment, student.selectedSection);
-
-                                }}
-                                disabled={loading || student.status !== "verified"}
-                                >
-                                {loading ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                    "Promote"
-                                )}
-                                </Button>
-
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {activeTab === "new" && (
-          <NewStudentRegistrationForm onSuccess={() => loadStudents()} />
-        )}
-      </div>
+<div className="p-4 md:p-6 space-y-4 md:space-y-6">
+  {/* Header */}
+  <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+    <div>
+      <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
+        Registration Officer
+      </h1>
+      <p className="text-gray-600" dir="rtl">
+        موظف تسجيل
+      </p>
     </div>
+    <Button
+      className="bg-blue-600 hover:bg-blue-700 w-full md:w-auto"
+      onClick={() => setActiveTab("new")}
+    >
+      <UserPlus className="mr-2 h-4 w-4" />
+      <span className="hidden md:inline">New Registration | تسجيل جديد</span>
+      <span className="md:hidden">New Registration</span>
+    </Button>
+  </div>
+
+  {/* Tabs */}
+  <div className="flex overflow-x-auto pb-2 md:pb-0">
+    <div className="flex space-x-1 md:space-x-4 border-b min-w-max">
+      <button
+        className={`px-3 py-2 md:px-6 md:py-3 text-sm md:text-base font-medium ${
+          activeTab === "new"
+            ? "border-b-2 border-blue-600 text-blue-600"
+            : "text-gray-600"
+        }`}
+        onClick={() => setActiveTab("new")}
+      >
+        <UserPlus className="inline mr-2 h-4 w-4" />
+        <span className="hidden md:inline">New Registration | تسجيل جديد</span>
+        <span className="md:hidden">New</span>
+      </button>
+      <button
+        className={`px-3 py-2 md:px-6 md:py-3 text-sm md:text-base font-medium ${
+          activeTab === "search"
+            ? "border-b-2 border-blue-600 text-blue-600"
+            : "text-gray-600"
+        }`}
+        onClick={() => {
+          setActiveTab("search");
+          loadStudents();
+        }}
+      >
+        <Search className="inline mr-2 h-4 w-4" />
+        <span className="hidden md:inline">Search & Verify | البحث والتحقق</span>
+        <span className="md:hidden">Search</span>
+      </button>
+      <button
+        className={`px-3 py-2 md:px-6 md:py-3 text-sm md:text-base font-medium ${
+          activeTab === "promotion"
+            ? "border-b-2 border-blue-600 text-blue-600"
+            : "text-gray-600"
+        }`}
+        onClick={() => {
+          setActiveTab("promotion");
+          loadStudents();
+        }}
+      >
+        <Users className="inline mr-2 h-4 w-4" />
+        <span className="hidden md:inline">Student Promotion | ترقية الطلاب</span>
+        <span className="md:hidden">Promotion</span>
+      </button>
+    </div>
+  </div>
+
+  {/* Content */}
+  <div className="space-y-4 md:space-y-6">
+    {activeTab === "search" && (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+            <span>Student Verification | التحقق من الطلاب</span>
+            <div className="flex flex-col md:flex-row gap-2 md:gap-4 w-full md:w-auto">
+              <Select
+                value={verificationStatus}
+                onValueChange={(value: any) => setVerificationStatus(value)}
+              >
+                <SelectTrigger className="w-full md:w-[150px]">
+                  <SelectValue placeholder="Filter status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Students</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="verified">Verified</SelectItem>
+                </SelectContent>
+              </Select>
+              <div className="relative w-full md:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search students..."
+                  className="pl-10 pr-4 py-2 border rounded-md w-full text-sm"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+            </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin" />
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Student Name</TableHead>
+                    <TableHead className="whitespace-nowrap">Class</TableHead>
+                    <TableHead className="whitespace-nowrap">Reg Date</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredStudents.map((student) => (
+                    <TableRow key={student.id}>
+                      <TableCell
+                        className="cursor-pointer hover:underline hover:text-blue-600 whitespace-nowrap"
+                        onClick={() => navigate(`/student/${student.id}`)}
+                      >
+                        {student.name_en}
+                        {student.isNewRegistration && (
+                          <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                            New
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">{student.currentClass} {student.currentSection}</TableCell>
+                      <TableCell className="whitespace-nowrap">{student.registrationDate}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {student.status === "verified" && (
+                            <CheckCircle2 className="h-4 w-4 text-green-500" />
+                          )}
+                          {student.status === "pending" && (
+                            <Loader2 className="h-4 w-4 animate-spin text-yellow-500" />
+                          )}
+                          {student.status === "rejected" && (
+                            <AlertCircle className="h-4 w-4 text-red-500" />
+                          )}
+                          <span className="capitalize whitespace-nowrap">{student.status}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right space-x-2 whitespace-nowrap">
+                        {student.status === "pending" && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => verifyStudent(student.id)}
+                              disabled={loading}
+                              className="h-8"
+                            >
+                              Verify
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-red-600 h-8"
+                              onClick={() => rejectStudent(student.id)}
+                              disabled={loading}
+                            >
+                              Reject
+                            </Button>
+                          </>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          {filteredStudents.length === 0 && !loading && (
+            <div className="text-center py-8 text-gray-500">
+              No students found matching your criteria
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    )}
+
+{activeTab === "promotion" && (
+  <Card>
+    <CardHeader>
+      <CardTitle className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+        <span>Student Promotion | ترقية الطلاب</span>
+        <div className="flex flex-col md:flex-row gap-2 md:gap-4 w-full md:w-auto">
+          <Select onValueChange={handleClassChange} value={selectedClass}>
+            <SelectTrigger className="w-full md:w-[180px]">
+              <SelectValue placeholder="Filter by class" />
+            </SelectTrigger>
+            <SelectContent>
+              {classList.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="relative w-full md:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search students..."
+              className="pl-10 pr-4 py-2 border rounded-md w-full text-sm"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+        </div>
+      </CardTitle>
+    </CardHeader>
+    <CardContent className="space-y-4">
+      <div className="overflow-x-auto">
+        {filteredStudents.length > 0 ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Student Name</TableHead>
+                <TableHead className="whitespace-nowrap">Current Class</TableHead>
+                <TableHead>Next Class</TableHead>
+                <TableHead>Next Section</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredStudents.map((student) => (
+                <TableRow key={student.id}>
+                  <TableCell className="whitespace-nowrap">
+                    {student.name_en}
+                    {student.isNewRegistration && (
+                      <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                        New
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {student.currentClass} {student.currentSection}
+                  </TableCell>
+                  <TableCell>
+                    <Select
+                      value={student.selectedDepartment || ""}
+                      onValueChange={(value) => {
+                        const updatedStudents = students.map((s) =>
+                          s.id === student.id
+                            ? {
+                                ...s,
+                                selectedDepartment: value,
+                                filteredSections: sections.filter(
+                                  (sec) => sec.department === value
+                                ),
+                                selectedSection: "", // reset section
+                              }
+                            : s
+                        );
+                        setStudents(updatedStudents);
+                      }}
+                    >
+                      <SelectTrigger className="w-[120px] md:w-[180px] text-sm">
+                        <SelectValue placeholder="Select Department" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {departments.map((dept) => (
+                          <SelectItem key={dept.id} value={dept.id}>
+                            {dept.department_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell>
+                    <Select
+                      value={student.selectedSection || ""}
+                      onValueChange={(value) => {
+                        const updatedStudents = students.map((s) =>
+                          s.id === student.id
+                            ? { ...s, selectedSection: value }
+                            : s
+                        );
+                        setStudents(updatedStudents);
+                      }}
+                    >
+                      <SelectTrigger className="w-[120px] md:w-[180px] text-sm">
+                        <SelectValue placeholder="Select Section" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(student.filteredSections || []).map((sec) => (
+                          <SelectItem key={sec.id} value={sec.id}>
+                            {sec.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell>
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs whitespace-nowrap ${
+                        student.status === "verified"
+                          ? "bg-green-100 text-green-800"
+                          : student.status === "pending"
+                          ? "bg-yellow-100 text-yellow-800"
+                          : "bg-red-100 text-red-800"
+                      }`}
+                    >
+                      {student.status}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        await promoteStudent(
+                          student.id,
+                          student.selectedDepartment,
+                          student.selectedSection
+                        );
+                      }}
+                      disabled={
+                        promotingStudentId !== null ||
+                        student.status !== "verified" ||
+                        !student.selectedDepartment ||
+                        !student.selectedSection
+                      }
+                      className="h-8"
+                    >
+                      {promotingStudentId === student.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        "Promote"
+                      )}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : (
+          <div className="text-center py-8 text-gray-500">
+            No students found matching your criteria
+          </div>
+        )}
+      </div>
+    </CardContent>
+  </Card>
+)}
+
+    {activeTab === "new" && (
+      <NewStudentRegistrationForm onSuccess={() => loadStudents()} />
+    )}
+  </div>
+</div>
   );
 };
 
