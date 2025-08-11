@@ -16,13 +16,13 @@ import Admin from "./pages/dashboard/Admin";
 import NotFound from "./pages/NotFound";
 import LoginModal from "./components/auth/LoginModal";
 import NewStudentRegistrationForm from "./components/dashboard/NewStudentRegistrationForm";
-import NewRegistrationForPublic from "./components/dashboard/NewRegistrationForPublic";
-import StudentDetailsPage from "./components/dashboard/StudentDetailsPage";
+import { RoleRouteWrapper } from "./components/auth/RoleRouteWrapper";
 import StudentDetails from "./pages/dashboard/StudentDetails";
 import PublicRegistration from "./pages/PublicRegistration";
 import { TokenService } from "./services/tokenService";
 import { useEffect } from "react";
 import { AuthWrapper } from "./components/auth/AuthWrapper";
+import NotAuthorized from "./pages/NotAuthorized";
 
 const queryClient = new QueryClient();
 
@@ -39,31 +39,70 @@ const App = () => {
   }, []);
 
   return (
-    <QueryClientProvider client={queryClient}>
+       <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
         <Sonner />
         
         <BrowserRouter>
           <Routes>
+            {/* Public routes */}
             <Route path="/" element={<Index />} />
             <Route path="/about" element={<About />} />
             <Route path="/academics" element={<Academics />} />
             <Route path="/admissions" element={<Admissions />} />
             <Route path="/contact" element={<Contact />} />
-            <Route element={<AuthWrapper><Outlet /></AuthWrapper>}>
-              <Route path="/dashboard/registration" element={<Registration />} />
-              <Route path="/dashboard/financial" element={<Financial />} />
-              <Route path="/dashboard/accountant" element={<Accountant />} />
-              <Route path="/dashboard/student-list" element={<StudentList />} />
-              <Route path="/dashboard/admin" element={<Admin />} />
-              <Route path="/student/addmission" element={<NewStudentRegistrationForm />} />
-              <Route path="/student/:id" element={<StudentDetails />} />
-            </Route>
-        
             <Route path="/admin/login" element={<LoginModal />} />
             <Route path="/student/newregisterforpublic" element={<PublicRegistration />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+
+            {/* Protected routes */}
+            <Route element={<AuthWrapper><Outlet /></AuthWrapper>}>
+              <Route 
+                path="/dashboard/registration" 
+                element={
+                  <RoleRouteWrapper allowedRoles={["Registration Officer"]}>
+                    <Registration />
+                  </RoleRouteWrapper>
+                } 
+              />
+              <Route 
+                path="/dashboard/financial" 
+                element={
+                  <RoleRouteWrapper allowedRoles={["Financial Agreement Officer"]}>
+                    <Financial />
+                  </RoleRouteWrapper>
+                } 
+              />
+              <Route 
+                path="/dashboard/accountant" 
+                element={
+                  <RoleRouteWrapper allowedRoles={["Accountant Controller"]}>
+                    <Accountant />
+                  </RoleRouteWrapper>
+                } 
+              />
+              <Route 
+                path="/dashboard/admin" 
+                element={
+                  <RoleRouteWrapper allowedRoles={["Accountant"]}>
+                    <Admin />
+                  </RoleRouteWrapper>
+                } 
+              />
+              <Route 
+                path="/dashboard/student-list" 
+                element={
+                  <RoleRouteWrapper allowedRoles={["Student List"]}>
+                    <StudentList />
+                  </RoleRouteWrapper>
+                } 
+              />
+              <Route path="/student/addmission" element={<NewStudentRegistrationForm />} />
+              <Route path="/student/:id" element={<StudentDetails />} />
+              <Route path="/dashboard/not-authorized" element={<NotAuthorized />} />
+            </Route>
+            
+            {/* Not found route */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

@@ -116,6 +116,13 @@ const handleLogin = async (e: React.FormEvent, role: string) => {
     const { access, refresh } = response.data;
     const decoded: TokenPayload = jwtDecode(access);
 
+     // Verify the user's role matches what they're trying to access
+    const targetRole = userRoles.find(r => r.value === activeRole)?.label;
+    if (decoded.role !== targetRole) {
+      toast.error(`You are not authorized as a ${targetRole}`);
+      throw new Error('Role mismatch');
+    }
+
     // Use TokenService to handle tokens
     TokenService.setTokens(access, refresh);
     localStorage.setItem("userData", JSON.stringify(decoded));

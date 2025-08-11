@@ -100,4 +100,21 @@ export const TokenService = {
       return false;
     }
   },
+
+   getUserRole: (): string | null => {
+    const userData = localStorage.getItem('userData');
+    if (!userData) return null;
+    
+    try {
+      const parsed = JSON.parse(userData);
+      return parsed.role || null;
+    } catch {
+      return null;
+    }
+  },
+
+  hasRole: (requiredRole: string): boolean => {
+    const userRole = TokenService.getUserRole();
+    return userRole === requiredRole;
+  }
 };
