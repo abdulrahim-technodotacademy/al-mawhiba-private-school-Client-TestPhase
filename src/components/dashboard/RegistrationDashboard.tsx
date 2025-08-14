@@ -37,6 +37,7 @@ type Student = {
   id: string;
   name_en: string;
   name_ar: string;
+  admission_number: string;
   date_of_birth: string;
   gender: string;
   nationality: string;
@@ -102,14 +103,7 @@ const [promotingStudentId, setPromotingStudentId] = useState<string | null>(null
   >("all");
 
   // Mock data - replace with API calls
-  const classOptions = [
-    "Grade 1",
-    "Grade 2",
-    "Grade 3",
-    "Grade 4",
-    "Grade 5",
-    "Grade 6",
-  ];
+
 
 
 
@@ -141,6 +135,7 @@ const loadStudents = async () => {
       
       const studentsData: Student[] = result.data.map((student: any, index: number) => ({
       id: student.id,
+      admission_number: student.admission_number,
       name_en: `${student.en_first_name} ${student.en_middle_name ?? ""} ${student.en_last_name}`.trim(),
       name_ar: `${student.ar_first_name} ${student.ar_middle_name ?? ""} ${student.ar_last_name}`.trim(),
       date_of_birth: student.date_of_birth,
@@ -259,12 +254,7 @@ const handleClassChange = (classValue: string) => {
   setSelectedStudents({});
 }
 
-  const handleDepartmentChange = (e) => {
-  const deptId = e.target.value;
-  setSelectedDepartment(deptId);
-  const filtered = sections.filter(sec => sec.department === deptId);
-  setFilteredSections(filtered);
-};
+
 
 const verifyStudent = async (studentId: string) => {
   setLoading(true);
@@ -347,27 +337,6 @@ const rejectStudent = async (studentId: string) => {
 
 
 
-  const clearVerifiedRegistrations = () => {
-    const storedRegistrations = localStorage.getItem("studentRegistrations");
-    if (storedRegistrations) {
-      const registrations = JSON.parse(storedRegistrations);
-      // Keep only pending registrations
-      const pendingRegistrations = registrations.filter(
-        (reg: any, index: number) => {
-          const studentId = `local-${index}`;
-          const student = students.find((s) => s.id === studentId);
-          return !student || student.status === "pending";
-        }
-      );
-
-      localStorage.setItem(
-        "studentRegistrations",
-        JSON.stringify(pendingRegistrations)
-      );
-    }
-  };
-
-
 
 const promoteStudent = async (studentId: string, newClass: string, newSection: string) => {
   const token = localStorage.getItem("accessToken");
@@ -402,7 +371,7 @@ const promoteStudent = async (studentId: string, newClass: string, newSection: s
 
     if (!promoteRes.ok) throw new Error("Failed to promote");
 
-    // Instead of updating local state, trigger a full reload
+   
     toast({
       title: "Student Promoted",
       description: "Refreshing student data...",
@@ -425,18 +394,22 @@ const promoteStudent = async (studentId: string, newClass: string, newSection: s
 
 
 const filteredStudents = students.filter((student) => {
-  const nameEn = student.name_en || '';
-  const nameAr = student.name_ar || '';
+  const searchLower = searchTerm.toLowerCase();
+  const nameEn = student.name_en?.toLowerCase() || '';
+  const nameAr = student.name_ar?.toLowerCase() || '';
+  const admissionNumber = student.admission_number?.toLowerCase() || '';
   
-  const matchesSearch =
-    nameEn.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    nameAr.toLowerCase().includes(searchTerm.toLowerCase());
+  // Special handling for AMPS number search (exact match or partial)
+  const isAMPSearch = searchLower.startsWith('amps');
+  const matchesAMPS = isAMPSearch && admissionNumber.includes(searchLower);
   
-  const matchesStatus =
-    verificationStatus === "all" || student.status === verificationStatus;
+  const matchesSearch = 
+    matchesAMPS || // AMPS number match
+    nameEn.includes(searchLower) || // Name match
+    nameAr.includes(searchLower); // Arabic name match
   
-  const matchesClass =
-    !selectedClass || student.currentClass === selectedClass;
+  const matchesStatus = verificationStatus === "all" || student.status === verificationStatus;
+  const matchesClass = !selectedClass || student.currentClass === selectedClass;
   
   return matchesSearch && matchesStatus && matchesClass;
 });
@@ -536,7 +509,7 @@ const filteredStudents = students.filter((student) => {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Search students..."
+                 placeholder="Search by name or admission number..."
                   className="pl-10 pr-4 py-2 border rounded-md w-full text-sm"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -668,6 +641,7 @@ const filteredStudents = students.filter((student) => {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Admission No.</TableHead>
                 <TableHead>Student Name</TableHead>
                 <TableHead className="whitespace-nowrap">Current Class</TableHead>
                 <TableHead>Next Class</TableHead>
@@ -679,6 +653,9 @@ const filteredStudents = students.filter((student) => {
             <TableBody>
               {filteredStudents.map((student) => (
                 <TableRow key={student.id}>
+                    <TableCell className="whitespace-nowrap">
+                    {student.admission_number}
+                  </TableCell>
                   <TableCell className="whitespace-nowrap">
                     {student.name_en}
                     {student.isNewRegistration && (

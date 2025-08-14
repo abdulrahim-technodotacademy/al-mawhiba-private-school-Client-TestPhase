@@ -115,6 +115,7 @@ interface Student {
   is_active: boolean;
   is_verified_registration_officer: boolean;
   financial_agreement: FinancialAgreement | null;
+  status: "not-created" | "pending" | "signed" | "Student-promoted";
 }
 
 interface FeeStructure {
@@ -128,6 +129,8 @@ interface FeeStructure {
   total: number;
   paymentPlan?: string;
   discount?: number;
+  subtotal?: number;
+  discountedAmount?: number;
 }
 
 interface Agreement {
@@ -142,9 +145,22 @@ interface Agreement {
   rejectionReason?: string;
 }
 
+interface AcademicYear {
+  id: string;
+  auto_id: number;
+  is_deleted: boolean;
+  custom_order: number | null;
+  alt_txt: string | null;
+  name: string;
+  start_date: string;
+  end_date: string;
+  is_current: boolean;
+}
+
 interface FinancialAgreementRequest {
   student: string;
   contract_number: string;
+  academic_year: string;
   admission_class: string;
   contract_type: string;
   registration_fees: string;
@@ -195,8 +211,7 @@ const FinancialAgreementDashboard = () => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [signaturePad, setSignaturePad] = useState<SignaturePad | null>(null);
   const [isSigning, setIsSigning] = useState(false);
-  const [currentSigningAgreement, setCurrentSigningAgreement] =
-    useState<Agreement | null>(null);
+  const [currentSigningAgreement, setCurrentSigningAgreement] = useState<Agreement | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [motherMobile, setMotherMobile] = useState("");
   const [fatherMobile, setFatherMobile] = useState("");
@@ -208,6 +223,8 @@ const FinancialAgreementDashboard = () => {
   const [guardianSignaturePad, setGuardianSignaturePad] = useState(null);
   const [employerSignaturePad, setEmployerSignaturePad] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<string>("");
 
   // Load initial data
   // Update your useEffect hook for fetching data:
@@ -253,59 +270,77 @@ const FinancialAgreementDashboard = () => {
         }
 
         // Transform the data with updated status logic
-        const formattedStudents: Student[] = studentsArray.map(
-          (student: any) => {
-            let status: "not-created" | "pending" | "signed";
-            let statusAr: string;
+       // In your student data mapping
+// In your student data mapping (inside the first useEffect)
+const formattedStudents: Student[] = studentsArray.map((student: any) => {
+  let status: "not-created" | "pending" | "signed" | "Student-promoted";
+  let statusAr: string;
+  let showCreateButton = false;
+  let primaryAgreement = null; // This will hold the most relevant agreement
 
-            // Handle cases where financial_agreement is null, undefined, or empty array
-            if (
-              !student.financial_agreement ||
-              (Array.isArray(student.financial_agreement) &&
-                student.financial_agreement.length === 0)
-            ) {
-              status = "not-created";
-              statusAr = "لم يتم الإنشاء";
-            } else if (Array.isArray(student.financial_agreement)) {
-              // Handle case where financial_agreement is an array
-              const agreement = student.financial_agreement[0]; // Take the first agreement if array
-              if (!agreement.is_verified_agreement_pdf) {
-                status = "pending";
-                statusAr = "بانتظار التحقق";
-              } else {
-                status = "signed";
-                statusAr = "تم التوقيع";
-              }
-            } else if (!student.financial_agreement.is_verified_agreement_pdf) {
-              // Handle case where financial_agreement is a single object
-              status = "pending";
-              statusAr = "بانتظار التحقق";
-            } else {
-              status = "signed";
-              statusAr = "تم التوقيع";
-            }
+  // Ensure financial_agreement is always an array and sort it by auto_id descending
+  // This puts the most recently created agreement at the start of the array.
+  const agreements = (
+    Array.isArray(student.financial_agreement) ? student.financial_agreement : []
+  ).sort((a, b) => b.auto_id - a.auto_id);
 
-            return {
-              id: student.id?.toString() || "unknown-id",
-              name: `${student.en_first_name || ""} ${
-                student.en_last_name || ""
-              }`.trim(),
-              nameAr: `${student.ar_first_name || ""} ${
-                student.ar_last_name || ""
-              }`.trim(),
-              grade: student.admission_class?.department_name || "N/A",
-              type: student.section?.name || "N/A",
-              registrationDate: student.admission_date,
-              financial_agreement: Array.isArray(student.financial_agreement)
-                ? student.financial_agreement[0] || null
-                : student.financial_agreement,
-              status,
-              statusAr,
-              guardianEmail: student.email || "",
-              rawData: student,
-            };
-          }
-        );
+  // The highest priority is to find an agreement that needs a signature.
+  const unverifiedAgreement = agreements.find(
+    (a) => a && a.is_verified_agreement_pdf === false
+  );
+  
+  const latestAgreement = agreements.length > 0 ? agreements[0] : null;
+
+  if (unverifiedAgreement) {
+    // If any agreement is unverified, the status is pending, regardless of others.
+    status = "pending";
+    statusAr = "بانتظار التحقق";
+    showCreateButton = false;
+    primaryAgreement = unverifiedAgreement; // The action should be on the unverified agreement.
+  } else if (agreements.length === 0) {
+    // If there are no agreements at all.
+    status = "not-created";
+    statusAr = "لم يتم الإنشاء";
+    showCreateButton = true;
+    primaryAgreement = null;
+  } else {
+    // All existing agreements are verified. Now, we check for other conditions.
+    if (
+      latestAgreement &&
+      student.admission_class &&
+      latestAgreement.admission_class !== student.admission_class.id
+    ) {
+      // If the latest agreement's class doesn't match the student's current class.
+      status = "Student-promoted";
+      statusAr = "عدم تطابق الصف";
+      showCreateButton = true; // Allow recreating the agreement for the new class.
+    } else {
+      // All agreements are verified and the class matches.
+      status = "signed";
+      statusAr = "تم التوقيع";
+      showCreateButton = false;
+    }
+    primaryAgreement = latestAgreement; // The primary agreement is the latest signed one.
+  }
+
+  return {
+    id: student.id?.toString() || "unknown-id",
+    name: `${student.en_first_name || ""} ${student.en_last_name || ""}`.trim(),
+    nameAr: `${student.ar_first_name || ""} ${student.ar_last_name || ""}`.trim(),
+    grade: student.admission_class?.department_name || "N/A",
+    type: student.section?.name || "N/A",
+    registrationDate: student.admission_date,
+    // Attach the single most relevant agreement for easy access in the UI
+    financial_agreement: primaryAgreement,
+    status,
+    statusAr,
+    showCreateButton,
+    guardianEmail: student.email || "",
+    rawData: student, // Keep the original full data for detailed operations
+  };
+});
+
+
 
         setPendingStudents(formattedStudents);
       } catch (error) {
@@ -316,42 +351,116 @@ const FinancialAgreementDashboard = () => {
     loadData();
   }, []);
 
-  const calculateTotal = () => {
-    const subtotal = Object.entries(feeStructure)
-      .filter(([key]) => !["total", "paymentPlan", "discount"].includes(key))
-      .reduce(
-        (sum, [_, value]) => sum + (typeof value === "number" ? value : 0),
-        0
+useEffect(() => {
+  const fetchAcademicYears = async () => {
+    try {
+      const accessToken = localStorage.getItem("accessToken");
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL}/students/academic-year/`,
+
       );
 
-    // Apply 5% discount only for 'one' installment plan (full payment)
-    const discount = feeStructure.paymentPlan === "one" ? 5 : 0;
-    const total = subtotal * (1 - discount / 100);
+      if (!response.ok) {
+        throw new Error("Failed to fetch academic years");
+      }
 
-    setFeeStructure((prev) => ({
-      ...prev,
-      total,
-      discount,
-    }));
+      const responseData = await response.json();
+      
+      // Access the data array from the response
+      if (responseData.data && Array.isArray(responseData.data)) {
+        setAcademicYears(responseData.data);
+        
+        // Set default to current academic year if available
+        const currentYear = responseData.data.find((year: AcademicYear) => year.is_current);
+        if (currentYear) {
+          setSelectedAcademicYearId(currentYear.id);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching academic years:", error);
+    }
   };
-  const handleCreateAgreement = (student: Student) => {
-    setSelectedStudent(student);
 
-    // Pre-populate fees
-    setFeeStructure({
-      tuitionFee: 1000,
-      registrationFee: 200,
-      booksFee: 150,
-      uniformFee: 100,
-      transportFee: 300,
-      examFee: 50,
-      extraActivities: 75,
-      total: 1875,
-      paymentPlan: "one",
-    });
+  fetchAcademicYears();
+}, []);
 
-    setActiveTab("agreements");
-  };
+
+const calculateTotal = () => {
+  // 1. Sum up the base fees to get a subtotal.
+  // Using explicit properties is clearer and safer than iterating over keys.
+  const subtotal =
+    (feeStructure.registrationFee || 0) +
+    (feeStructure.booksFee || 0) +
+    (feeStructure.transportFee || 0);
+    // Add any other fees from your `feeStructure` state here if they contribute to the total
+    // e.g., + (feeStructure.uniformFee || 0)
+
+  // 2. Determine the discount percentage based on the payment plan.
+  // This is the key logic: 5% for 'one' installment, 0% for all others.
+  const discountPercentage = feeStructure.paymentPlan === "one" ? 5 : 0;
+
+  // 3. Calculate the actual monetary value of the discount.
+  const discountAmount = subtotal * (discountPercentage / 100);
+
+  // 4. Calculate the final total by subtracting the discount from the subtotal.
+  const finalTotal = subtotal - discountAmount;
+
+  // 5. Update the state with all the new, calculated values.
+  setFeeStructure((prev) => ({
+    ...prev,
+    subtotal: subtotal,           // Good to store for reference
+    discount: discountPercentage, // Store the applied discount percentage
+    discountedAmount: discountAmount, // Good to store for reference
+    total: finalTotal,            // The final, correct total
+  }));
+};
+
+// Update the payment plan selection handler
+const handlePaymentPlanChange = (value: "one" | "two" | "four") => {
+  setFeeStructure((prev) => ({
+    ...prev,
+    paymentPlan: value,
+  }));
+};
+
+useEffect(() => {
+  calculateTotal();
+}, [
+  feeStructure.registrationFee,
+  feeStructure.booksFee,
+  feeStructure.transportFee,
+  feeStructure.paymentPlan,
+]);
+const handleCreateAgreement = (student: Student) => {
+  const hasClassMismatch =
+    student.financial_agreement &&
+    student.financial_agreement.admission_class !==
+      student.rawData.admission_class?.id;
+
+  if (hasClassMismatch) {
+    console.log(
+      `Recreating agreement due to class change for student ${student.id}`
+    );
+  }
+  setSelectedStudent(student);
+  setFeeStructure({
+    registrationFee: 200,
+    booksFee: 150,
+    transportFee: 300,
+    // Set other base fees here...
+    uniformFee: 100,
+    examFee: 50,
+    extraActivities: 75,
+    // --- Correction ---
+    paymentPlan: "one", // Default to one installment
+    total: 0,
+    discount: 0,
+    subtotal: 0,
+    discountedAmount: 0
+  });
+
+  setActiveTab("agreements");
+};
 
   const handleSendForESignature = (agreement: Agreement) => {
     // In a real app, this would send an email to the guardian
@@ -369,20 +478,7 @@ const FinancialAgreementDashboard = () => {
     );
   };
 
-  const resetAgreementForm = () => {
-    setSelectedStudent(null);
-    setFeeStructure({
-      tuitionFee: 0,
-      registrationFee: 0,
-      booksFee: 0,
-      uniformFee: 0,
-      transportFee: 0,
-      examFee: 0,
-      extraActivities: 0,
-      total: 0,
-    });
-    setAgreementDetails("");
-  };
+
 
   const getStudent = (studentId: string) => {
     return [...pendingStudents].find((s) => s.id === studentId);
@@ -417,6 +513,7 @@ const FinancialAgreementDashboard = () => {
     // Prepare the request payload
     const payload: FinancialAgreementRequest = {
       student: selectedStudent.id,
+      academic_year: selectedAcademicYearId,
       contract_number: contractNumber,
       admission_class: selectedStudent.rawData.admission_class.id,
       contract_type: "new",
@@ -872,26 +969,22 @@ const FinancialAgreementDashboard = () => {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          {student.status === "not-created" && (
-                            <Button
-                              onClick={() => handleCreateAgreement(student)}
-                              className="bg-green-600 hover:bg-green-700 text-white"
-                            >
-                              <FileText className="mr-2 h-4 w-4" />
-                              Create Agreement
-                            </Button>
-                          )}
-                          {student.status === "pending" && (
-                            <span className="text-yellow-600">
-                              Pending Verification
-                            </span>
-                          )}
-                          {student.status === "signed" && (
-                            <span className="text-green-600">
-                              Agreement Signed
-                            </span>
-                          )}
-                        </td>
+                      {student.showCreateButton ? (
+                        <Button
+                          onClick={() => handleCreateAgreement(student)}
+                          className="bg-green-600 hover:bg-green-700 text-white"
+                        >
+                          <FileText className="mr-2 h-4 w-4" />
+                          {student.status === "Student-promoted" 
+                            ? "Recreate Agreement" 
+                            : "Create Agreement"}
+                        </Button>
+                      ) : student.status === "pending" ? (
+                        <span className="text-yellow-600">Pending Verification</span>
+                      ) : student.status === "signed" ? (
+                        <span className="text-green-600">Agreement Signed</span>
+                      ) : null}
+                    </td>
                       </tr>
                     ))}
                   </tbody>
@@ -959,19 +1052,20 @@ const FinancialAgreementDashboard = () => {
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <Label>Registration Fees (OMR)</Label>
-                          <Input
-                            type="number"
-                            step="0.001"
-                            value={feeStructure.registrationFee}
-                            onChange={(e) => {
-                              const value = parseFloat(e.target.value) || 0;
-                              setFeeStructure((prev) => ({
-                                ...prev,
-                                registrationFee: value,
-                              }));
-                              calculateTotal();
-                            }}
-                          />
+                         <Input
+                        type="number"
+                        step="0.001"
+                        value={feeStructure.registrationFee}
+                        onChange={(e) => {
+                          const value = parseFloat(e.target.value) || 0;
+                          // Update the fee and then immediately recalculate
+                          setFeeStructure((prev) => ({
+                            ...prev,
+                            registrationFee: value,
+                          }));
+                          // We will use a useEffect hook to handle the recalculation automatically
+                        }}
+                      />
                         </div>
                         <div>
                           <Label>Books Fees (OMR)</Label>
@@ -1053,6 +1147,26 @@ const FinancialAgreementDashboard = () => {
                         Contact Information
                       </h3>
                       <div className="grid grid-cols-2 gap-4">
+                        <div>
+                        <Label>Academic Year</Label>
+                        <Select
+                          value={selectedAcademicYearId}
+                          onValueChange={setSelectedAcademicYearId}
+                          required
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select academic year" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {academicYears.map((year) => (
+                              <SelectItem key={year.id} value={year.id}>
+                                {year.name} ({year.start_date} to {year.end_date})
+                                {year.is_current && " (Current)"}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                         <div>
                           <Label>Mother's Mobile</Label>
                           <Input
@@ -1368,9 +1482,15 @@ const FinancialAgreementDashboard = () => {
                           if (!accessToken)
                             throw new Error("Authentication required");
 
-                          const agreementId =
-                            currentSigningAgreement.rawData
-                              .financial_agreement[0].id;
+                           const agreementToSign = currentSigningAgreement.rawData.financial_agreement.find(
+                                  (a: any) => a.is_verified_agreement_pdf === false
+                                );
+
+                                 if (!agreementToSign) {
+                                          throw new Error("Could not find an unverified agreement to sign.");
+                                        }
+
+                             const agreementId = agreementToSign.id;
 
                           // 1. Download original PDF
                           const pdfResponse = await fetch(
@@ -1661,7 +1781,7 @@ const FinancialAgreementDashboard = () => {
                                     <Button
                                       variant="outline"
                                       onClick={() => {
-                                        const pdfUrl = `https://almawhibatest.febnotech.com${student.financial_agreement.agreement_pdf}`;
+                                        const pdfUrl = `${import.meta.env.VITE_DOMAIN}${student.financial_agreement.agreement_pdf}`;
                                         window.open(
                                           pdfUrl,
                                           "_blank",

@@ -136,6 +136,7 @@ const handleLogin = async (e: React.FormEvent, role: string) => {
     if (axios.isAxiosError(error)) {
       toast.error(error.response?.data?.detail || "Invalid email or password");
     } else {
+      toast.error(`You are not authorized as a your selected role`);
       toast.error("Login failed. Please try again.");
     }
   } finally {
