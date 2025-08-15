@@ -1,12 +1,16 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, Calendar, List, FileSpreadsheet, Filter, Download, Users, TrendingUp, Search, X, Loader2 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { FileText, Calendar, List, FileSpreadsheet, Filter, Download, Users, TrendingUp, Search, X, Loader2, Edit } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { Input } from "@/components/ui/input";
 import { Label } from "recharts";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { toast } from "sonner";
+// Import pdf-lib for PDF manipulation
+import { PDFDocument } from 'pdf-lib';
+import SignatureCanvas from 'react-signature-canvas';
+
 
 const AccountAdminDashboard = () => {
   // State management
@@ -33,440 +37,653 @@ const AccountAdminDashboard = () => {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentError, setPaymentError] = useState("");
   const [availableInstallments, setAvailableInstallments] = useState<any[]>([]);
+  const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null);
+
+
+    // === NEW STATES for the signature process ===
+  const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
+  const [signingPaymentInfo, setSigningPaymentInfo] = useState<any>(null); // To store info of the payment being signed
+  const [isAttachingSignature, setIsAttachingSignature] = useState(false);
+  
+  // Refs for the signature pads
+  const guardianSigPad = useRef<SignatureCanvas>(null);
+  const adminSigPad = useRef<SignatureCanvas>(null);
+
 
   // Fetch academic years on component mount
-  useEffect(() => {
-    const fetchAcademicYears = async () => {
-      try {
-        const response = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/students/academic-year/`);
-        setAcademicYears(response.data.data);
-        if (response.data.data.length > 0) {
-          setSelectedYear(response.data.data[0].id);
+      useEffect(() => {
+        const fetchAcademicYears = async () => {
+          try {
+            const response = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/students/academic-year/`);
+            setAcademicYears(response.data.data);
+            if (response.data.data.length > 0) {
+              setSelectedYear(response.data.data[0].id);
+            }
+          } catch (error) {
+            console.error('Error fetching academic years:', error);
+          }
+        };
+        fetchAcademicYears();
+      }, []);
+
+      // Fetch student data when selected year changes
+      useEffect(() => {
+        if (selectedYear) {
+          fetchStudentData(selectedYear);
         }
-      } catch (error) {
-        console.error('Error fetching academic years:', error);
+      }, [selectedYear]);
+
+      useEffect(() => {
+      if (selectedStudent) {
+        const installments = getAvailablePayments(selectedStudent);
+        setAvailableInstallments(installments);
+        
+        // Auto-select the first available installment
+        if (installments.length > 0) {
+          setPaymentData(prev => ({
+            ...prev,
+            paymentStatus: installments[0].value,
+            amount: installments[0].amount
+          }));
+        }
       }
-    };
-    fetchAcademicYears();
-  }, []);
+    }, [selectedStudent]);
 
-  // Fetch student data when selected year changes
-  useEffect(() => {
-    if (selectedYear) {
-      fetchStudentData(selectedYear);
-    }
-  }, [selectedYear]);
+      const fetchStudentData = async (yearId: string) => {
+        setLoading(true);
+        try {
+          const response = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/students/students-academic-details/?academic_year_id=${yearId}`);
+          const students = response.data.data;
+          
+          // Process student data with enhanced payment information
 
-  useEffect(() => {
-  if (selectedStudent) {
-    const installments = getAvailablePayments(selectedStudent);
-    setAvailableInstallments(installments);
-    
-    // Auto-select the first available installment
-    if (installments.length > 0) {
-      setPaymentData(prev => ({
-        ...prev,
-        paymentStatus: installments[0].value,
-        amount: installments[0].amount
-      }));
-    }
-  }
-}, [selectedStudent]);
-
-  const fetchStudentData = async (yearId: string) => {
-    setLoading(true);
-    try {
-      const response = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/students/students-academic-details/?academic_year_id=${yearId}`);
-      const students = response.data.data;
+    const processedStudents = students.map((student: any) => {
+      const financialAgreement = Array.isArray(student.financial_agreement)
+      ? student.financial_agreement.find(agreement => agreement.academic_year === yearId) || {}
+      : {};
+      const totalFees = parseFloat(financialAgreement.total_fees_omr || "0");
+      const paymentHistory = student.payment_history || [];
       
-      // Process student data with enhanced payment information
+      // Calculate total paid with 2 decimal precision
+      const totalPaid = parseFloat(paymentHistory.reduce((sum: number, payment: any) => {
+        return sum + parseFloat(payment.paid_amount || "0");
+      }, 0).toFixed(2));
 
-const processedStudents = students.map((student: any) => {
-  const financialAgreement = Array.isArray(student.financial_agreement)
-  ? student.financial_agreement.find(agreement => agreement.academic_year === yearId) || {}
-  : {};
-  const totalFees = parseFloat(financialAgreement.total_fees_omr || "0");
-  const paymentHistory = student.payment_history || [];
-  
-  // Calculate total paid with 2 decimal precision
-  const totalPaid = parseFloat(paymentHistory.reduce((sum: number, payment: any) => {
-    return sum + parseFloat(payment.paid_amount || "0");
-  }, 0).toFixed(2));
+      // Calculate pending amount with rounding consideration
+      const pendingAmount = parseFloat((totalFees - totalPaid).toFixed(2));
 
-  // Calculate pending amount with rounding consideration
-  const pendingAmount = parseFloat((totalFees - totalPaid).toFixed(2));
+      // Determine payment completion (accounting for rounding)
+      const paymentComplete = pendingAmount <= 0.01;
+      const totalInstallments = financialAgreement.installment_plan === "one" ? 1 :
+                              financialAgreement.installment_plan === "two" ? 2 : 4;
 
-  // Determine payment completion (accounting for rounding)
-  const paymentComplete = pendingAmount <= 0.01;
-  const totalInstallments = financialAgreement.installment_plan === "one" ? 1 :
-                          financialAgreement.installment_plan === "two" ? 2 : 4;
+      return {
+        id: student.id,
+        admissionNumber: student.admission_number,
+        name: `${student.en_first_name} ${student.en_last_name}`,
+        nameAr: `${student.ar_first_name} ${student.ar_last_name}`,
+        grade: student.admission_class?.department_name || 'N/A',
+        status: student.is_active ? 'Active' : 'Inactive',
+        totalFees,
+        paidAmount: paymentComplete ? totalFees : totalPaid,
+        pendingAmount: paymentComplete ? 0 : pendingAmount,
+        paymentStatus: paymentComplete ? "Complete" : 
+                      `${paymentHistory.length} of ${totalInstallments} payments`,
+        paymentComplete,
+        paymentHistory,
+        financialAgreement: {
+          ...financialAgreement,
+          first_installment_paid: paymentHistory.some(p => p.payment_status === "first"),
+          second_installment_paid: paymentHistory.some(p => p.payment_status === "second"),
+          third_installment_paid: paymentHistory.some(p => p.payment_status === "third"),
+          fourth_installment_paid: totalInstallments === 4 ? 
+                                  paymentHistory.some(p => p.payment_status === "fourth") : undefined
+        },
+        academicYearId: yearId
+      };
+    });
+          setStudentList(processedStudents);
+          
+          // Extract unique classes for filtering
+          const classes = [...new Set(processedStudents.map(student => student.grade))] as string[];
+          setAvailableClasses(classes);
 
-  return {
-    id: student.id,
-    admissionNumber: student.admission_number,
-    name: `${student.en_first_name} ${student.en_last_name}`,
-    nameAr: `${student.ar_first_name} ${student.ar_last_name}`,
-    grade: student.admission_class?.department_name || 'N/A',
-    status: student.is_active ? 'Active' : 'Inactive',
-    totalFees,
-    paidAmount: paymentComplete ? totalFees : totalPaid,
-    pendingAmount: paymentComplete ? 0 : pendingAmount,
-    paymentStatus: paymentComplete ? "Complete" : 
-                  `${paymentHistory.length} of ${totalInstallments} payments`,
-    paymentComplete,
-    paymentHistory,
-    financialAgreement: {
-      ...financialAgreement,
-      first_installment_paid: paymentHistory.some(p => p.payment_status === "first"),
-      second_installment_paid: paymentHistory.some(p => p.payment_status === "second"),
-      third_installment_paid: paymentHistory.some(p => p.payment_status === "third"),
-      fourth_installment_paid: totalInstallments === 4 ? 
-                              paymentHistory.some(p => p.payment_status === "fourth") : undefined
-    },
-    academicYearId: yearId
-  };
-});
-      setStudentList(processedStudents);
-      
-      // Extract unique classes for filtering
-      const classes = [...new Set(processedStudents.map(student => student.grade))] as string[];
-      setAvailableClasses(classes);
-
-      // Calculate yearly summary
-      const year = academicYears.find(y => y.id === yearId)?.name || yearId;
-      const totalStudents = processedStudents.length;
-      const totalRevenue = processedStudents.reduce((sum: number, student: any) => sum + student.totalFees, 0);
-      const totalPaid = processedStudents.reduce((sum: number, student: any) => sum + student.paidAmount, 0);
-      const collectionRate = totalRevenue > 0 ? (totalPaid / totalRevenue) * 100 : 0;
-      
-      setYearlyData([{
-        year,
-        students: totalStudents,
-        revenue: totalRevenue.toFixed(2),
-        paid: totalPaid.toFixed(2),
-        collectionRate: collectionRate.toFixed(2)
-      }]);
-      
-    } catch (error) {
-      console.error('Error fetching student data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+          // Calculate yearly summary
+          const year = academicYears.find(y => y.id === yearId)?.name || yearId;
+          const totalStudents = processedStudents.length;
+          const totalRevenue = processedStudents.reduce((sum: number, student: any) => sum + student.totalFees, 0);
+          const totalPaid = processedStudents.reduce((sum: number, student: any) => sum + student.paidAmount, 0);
+          const collectionRate = totalRevenue > 0 ? (totalPaid / totalRevenue) * 100 : 0;
+          
+          setYearlyData([{
+            year,
+            students: totalStudents,
+            revenue: totalRevenue.toFixed(2),
+            paid: totalPaid.toFixed(2),
+            collectionRate: collectionRate.toFixed(2)
+          }]);
+          
+        } catch (error) {
+          console.error('Error fetching student data:', error);
+        } finally {
+          setLoading(false);
+        }
+      };
 
   // Filter students based on search and class selection
-  const filteredStudents = studentList.filter(student => {
-    const matchesSearch = student.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                         student.admissionNumber.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesClass = selectedClass === 'all' || student.grade === selectedClass;
-    return matchesSearch && matchesClass;
-  });
+        const filteredStudents = studentList.filter(student => {
+          const matchesSearch = student.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                              student.admissionNumber.toLowerCase().includes(searchQuery.toLowerCase());
+          const matchesClass = selectedClass === 'all' || student.grade === selectedClass;
+          return matchesSearch && matchesClass;
+        });
 
-  const showStudentDetails = async (student: any) => {
-    setSelectedStudent(student);
-    setIsDetailModalOpen(true);
-    setDetailLoading(true);
+        const showStudentDetails = async (student: any) => {
+          setSelectedStudent(student);
+          setIsDetailModalOpen(true);
+          setDetailLoading(true);
+          
+          try {
+            const response = await axios.get(
+              `${import.meta.env.VITE_API_BASE_URL}/students/students-academic-details/?academic_year_id=${student.academicYearId}&student_id=${student.id}`
+            );
+            setStudentDetails(response.data.data);
+          } catch (error) {
+            console.error('Error fetching student details:', error);
+            setStudentDetails(null);
+          } finally {
+            setDetailLoading(false);
+          }
+        };
+
+        const openPaymentModal = (student: any) => {
+          setSelectedStudent(student);
+          setPaymentData({
+            amount: "",
+            paymentSlip: null,
+            paymentStatus: "first",
+            isVerified: false
+          });
+          setIsPaymentModalOpen(true);
+        };
+
+        const closeModal = () => {
+          setIsDetailModalOpen(false);
+          setIsPaymentModalOpen(false);
+          setSelectedStudent(null);
+          setStudentDetails(null);
+          setPaymentError("");
+        };
+
+      const updatePaymentFlags = async (student, academicYearId, paymentStatus, paidAmount) => {
+        if (!student) {
+          console.error("Cannot update payment flags: Student data missing.");
+          return;
+        }
+
+        // --- NEW ROBUST LOGIC TO FIND THE AGREEMENT ---
+        let currentAgreement = null;
+        const agreementData = student.financialAgreement;
+
+        if (Array.isArray(agreementData)) {
+          // Case 1: The data is an array, as originally expected.
+          console.log("Agreement data is an ARRAY. Searching within it.");
+          currentAgreement = agreementData.find(a => a.academic_year === academicYearId);
+        } else if (agreementData && typeof agreementData === 'object') {
+          // Case 2: The data is a single object.
+          console.log("Agreement data is an OBJECT. Checking it directly.");
+          // We check if this single object's academic_year matches what we need.
+          if (agreementData.academic_year === academicYearId) {
+            currentAgreement = agreementData;
+          }
+        }
+        // --- END OF NEW LOGIC ---
+
+        if (!currentAgreement) {
+          // This will now only trigger if the data is truly missing or the ID doesn't match
+          console.error("No financial agreement found for the current academic year:", academicYearId);
+          console.log("This was the data we searched in:", agreementData); // Extra log for help
+          return;
+        }
+
+        // The rest of the function remains the same...
+
+        const payload = {};
+        const statusToFieldMap = {
+          first: "first_installment_paid",
+          second: "second_installment_paid",
+          third: "third_installment_paid",
+          fourth: "fourth_installment_paid",
+          full: "payment_completed"
+        };
+        const fieldToUpdate = statusToFieldMap[paymentStatus];
+        if (fieldToUpdate) {
+          payload[fieldToUpdate] = true;
+        }
+
+        const remainingAmount = parseFloat(student.pendingAmount.toFixed(2));
+        const amountBeingPaid = parseFloat(paidAmount.toFixed(2));
+        const isCompleted = amountBeingPaid >= remainingAmount - 0.01;
+
+        if (isCompleted) {
+          payload.payment_completed = true;
+        }
+
+        if (Object.keys(payload).length === 0) {
+          console.log("No payment flags to update.");
+          return;
+        }
+
+        try {
+          const response = await axios.patch(
+            `${import.meta.env.VITE_API_BASE_URL}/students/update-payment-flag/${currentAgreement.id}/`,
+            payload,
+            {
+              headers: {
+                "Content-Type": "application/json",
+              },
+            }
+          );
+          if (response.data) {
+            console.log("Payment flags updated successfully with payload:", payload);
+          }
+        } catch (err) {
+          console.error("Failed to update payment flags:", err.response?.data || err.message);
+        }
+      };
+
+      const handlePaymentSubmit = async (e) => {
+        e.preventDefault();
+
+        setPaymentLoading(true);
+        setPaymentError("");
+
+        try {
+          if (!selectedStudent) {
+            throw new Error("No student selected");
+          }
+
+          const totalFees = parseFloat(selectedStudent.totalFees.toFixed(2));
+          const paidAmount = parseFloat(selectedStudent.paidAmount.toFixed(2));
+          const remainingAmount = parseFloat((totalFees - paidAmount).toFixed(2));
+
+          const selectedInstallment = availableInstallments.find(
+            (i) => i.value === paymentData.paymentStatus
+          );
+
+          if (!selectedInstallment) {
+            throw new Error("No installment selected");
+          }
+
+          const isFinalPayment = remainingAmount <= parseFloat(selectedInstallment.amount) + 0.01;
+          const amountToPay = isFinalPayment ? remainingAmount : parseFloat(selectedInstallment.amount);
+
+          if (amountToPay <= 0) {
+            throw new Error("Payment amount must be greater than zero");
+          }
+
+          const formData = new FormData();
+          formData.append("student", selectedStudent.id);
+          formData.append("academic_year", selectedStudent.academicYearId);
+          formData.append("payment_status", paymentData.paymentStatus);
+          formData.append("paid_amount", amountToPay.toFixed(2));
+
+          if (paymentData.paymentSlip) {
+            formData.append("payment_slip", paymentData.paymentSlip);
+          }
+
+          const response = await axios.post(
+            `${import.meta.env.VITE_API_BASE_URL}/students/payment-history/`,
+            formData,
+            {
+              headers: {
+                "Content-Type": "multipart/form-data",
+              },
+            }
+          );
+
+          if (response.data) {
+            toast.success("Payment recorded successfully!", {
+              autoClose: 2000,
+            });
+
+            // *** NEW: Call the function to update payment flags ***
+          await updatePaymentFlags(
+              selectedStudent, 
+              selectedYear, 
+              paymentData.paymentStatus, 
+              amountToPay
+            );
+
+            // Refresh data and close modal as before
+            await fetchStudentData(selectedYear);
+            closeModal();
+          } else {
+            throw new Error(response.data.message || "Payment failed");
+          }
+        } catch (err) {
+          console.error("Payment error:", err);
+          setPaymentError(
+            err.response?.data?.message ||
+            err.response?.data?.error ||
+            err.message ||
+            "Failed to process payment"
+          );
+        } finally {
+          setPaymentLoading(false);
+        }
+      };
+
+      const handleDownloadReceipt = async (paymentId: string) => {
+          setDownloadingReceiptId(paymentId);
+          try {
+            const response = await axios.get(
+              `${import.meta.env.VITE_API_BASE_URL}/students/students/${paymentId}/download-payment-receipt/`,
+              {
+                responseType: 'arraybuffer', // Important to handle binary data
+              }
+            );
+
+            let pdfBytes = response.data;
+
+            // --- Optional: Signature Logic ---
+            // This part assumes you have signature images (e.g., from a signature pad)
+            // available in the browser as base64 data URLs. If not, you can remove this block.
+            /*
+            const pdfDoc = await PDFDocument.load(pdfBytes);
+            
+            // Example signature data (replace with your actual signature data URLs)
+            const guardianSignatureUrl = 'data:image/png;base64,...'; 
+            const employerSignatureUrl = 'data:image/png;base64,...';
+
+            const [guardianPngBytes, employerPngBytes] = await Promise.all([
+              fetch(guardianSignatureUrl).then((res) => res.arrayBuffer()),
+              fetch(employerSignatureUrl).then((res) => res.arrayBuffer()),
+            ]);
+
+            const guardianImage = await pdfDoc.embedPng(guardianPngBytes);
+            const employerImage = await pdfDoc.embedPng(employerPngBytes);
+
+            const page = pdfDoc.getPages()[1]; // Or whichever page is correct
+
+            page.drawImage(guardianImage, { x: 50, y: 180, width: 120, height: 50 });
+            page.drawImage(employerImage, { x: 200, y: 180, width: 120, height: 50 });
+
+            pdfBytes = await pdfDoc.save();
+            */
+            // --- End of Optional Signature Logic ---
+
+            const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `receipt-${paymentId}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
+
+            toast.success("Receipt downloaded successfully!");
+
+          } catch (error) {
+            console.error('Error downloading receipt:', error);
+            toast.error("Failed to download receipt.");
+          } finally {
+            setDownloadingReceiptId(null);
+          }
+        };
+
+
+      const getAvailablePayments = (student: any) => {
+            if (!student?.financialAgreement) return [];
+            
+            const agreement = student.financialAgreement;
+            const totalFees = parseFloat(agreement.total_fees_omr);
+            const payments = [];
+            
+            // Calculate remaining amount to prevent overpayment
+            const remainingAmount = totalFees - student.paidAmount;
+
+            // For one-time payment plan
+            if (agreement.installment_plan === "one") {
+              return [{
+                value: "full",
+                label: `Full Payment (${totalFees.toFixed(2)} OMR)`,
+                amount: Math.min(remainingAmount, totalFees).toFixed(2)
+              }];
+            }
+            
+            // For two-installment plan
+            if (agreement.installment_plan === "two") {
+              const installmentAmount = (totalFees / 2).toFixed(2);
+              
+              if (!agreement.first_installment_paid) {
+                payments.push({ 
+                  value: "first", 
+                  label: `First Installment (50% - ${installmentAmount} OMR)`,
+                  amount: Math.min(remainingAmount, parseFloat(installmentAmount)).toFixed(2)
+                });
+              }
+              
+              if (agreement.first_installment_paid && !agreement.second_installment_paid) {
+                payments.push({ 
+                  value: "second", 
+                  label: `Second Installment (50% - ${installmentAmount} OMR)`,
+                  amount: Math.min(remainingAmount, parseFloat(installmentAmount)).toFixed(2)
+                });
+              }
+              
+              return payments;
+            }
+            
+            // For four-installment plan
+            if (agreement.installment_plan === "four") {
+              const installmentAmount = (totalFees / 4).toFixed(2);
+              
+              if (!agreement.first_installment_paid) {
+                payments.push({ 
+                  value: "first", 
+                  label: `First Installment (25% - ${installmentAmount} OMR)`,
+                  amount: Math.min(remainingAmount, parseFloat(installmentAmount)).toFixed(2)
+                });
+              }
+              
+              if (agreement.first_installment_paid && !agreement.second_installment_paid) {
+                payments.push({ 
+                  value: "second", 
+                  label: `Second Installment (25% - ${installmentAmount} OMR)`,
+                  amount: Math.min(remainingAmount, parseFloat(installmentAmount)).toFixed(2)
+                });
+              }
+              
+              if (agreement.second_installment_paid && !agreement.third_installment_paid) {
+                payments.push({ 
+                  value: "third", 
+                  label: `Third Installment (25% - ${installmentAmount} OMR)`,
+                  amount: Math.min(remainingAmount, parseFloat(installmentAmount)).toFixed(2)
+                });
+              }
+              
+              if (agreement.third_installment_paid && !agreement.fourth_installment_paid) {
+                payments.push({ 
+                  value: "fourth", 
+                  label: `Fourth Installment (25% - ${installmentAmount} OMR)`,
+                  amount: Math.min(remainingAmount, parseFloat(installmentAmount)).toFixed(2)
+                });
+              }
+              
+              return payments;
+            }
+            
+            return payments;
+          };
+
+        const stats = [
+          { 
+            title: 'Total Revenue', 
+            titleAr: 'إجمالي الإيرادات', 
+            value: yearlyData[0]?.revenue ? `${yearlyData[0].revenue} OMR` : '0 OMR', 
+            icon: () => <span className="font-bold text-green-600">OMR</span>, 
+            trend: '+0.0%' 
+          },
+          { 
+            title: 'Active Students', 
+            titleAr: 'الطلاب النشطون', 
+            value: yearlyData[0]?.students || '0', 
+            icon: Users, 
+            trend: '+0.0%' 
+          },
+          { 
+            title: 'Collection Rate', 
+            titleAr: 'معدل التحصيل', 
+            value: yearlyData[0]?.collectionRate ? `${yearlyData[0].collectionRate}%` : '0%', 
+            icon: TrendingUp, 
+            trend: '+0.0%' 
+          }
+        ];
+
+    const openSignatureModal = (payment: any) => {
+    // We pass the entire payment object to have access to amounts
+    setSigningPaymentInfo({
+        paymentId: payment.id,
+        // We also ne ed the student's total fees for the PATCH request
+        totalFees: selectedStudent?.totalFees, 
+        pendingAmount: selectedStudent?.pendingAmount
+    });
+    setIsSignatureModalOpen(true);
+  };
+
+    const closeSignatureModal = () => {
+    setIsSignatureModalOpen(false);
+    setSigningPaymentInfo(null);
+    guardianSigPad.current?.clear();
+    adminSigPad.current?.clear();
+  };
+
+    const handleInitiateSigning = (payment: any) => {
+     openSignatureModal(payment);
+  };
+
+    const dataURLtoBlob = (dataurl: string) => {
+      const arr = dataurl.split(',');
+      const mimeMatch = arr[0].match(/:(.*?);/);
+      if (!mimeMatch) return null;
+      const mime = mimeMatch[1];
+      const bstr = atob(arr[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while(n--){
+          u8arr[n] = bstr.charCodeAt(n);
+      }
+      return new Blob([u8arr], {type:mime});
+  }
+
+  const handleAttachSignatureAndDownload = async () => {
+    if (guardianSigPad.current?.isEmpty() || adminSigPad.current?.isEmpty()) {
+      toast.error("Both signatures are required.");
+      return;
+    }
+
+    setIsAttachingSignature(true);
     
     try {
-      const response = await axios.get(
-        `${import.meta.env.VITE_API_BASE_URL}/students/students-academic-details/?academic_year_id=${student.academicYearId}&student_id=${student.id}`
+      // === 1. DOWNLOAD THE ORIGINAL, UNSIGNED RECEIPT PDF ===
+      const pdfResponse = await axios.get(
+        `${import.meta.env.VITE_API_BASE_URL}/students/students/${signingPaymentInfo.paymentId}/download-payment-receipt/`,
+        {
+          responseType: 'arraybuffer', // We need the raw data of the PDF
+        }
       );
-      setStudentDetails(response.data.data);
-    } catch (error) {
-      console.error('Error fetching student details:', error);
-      setStudentDetails(null);
-    } finally {
-      setDetailLoading(false);
-    }
-  };
 
-  const openPaymentModal = (student: any) => {
-    setSelectedStudent(student);
-    setPaymentData({
-      amount: "",
-      paymentSlip: null,
-      paymentStatus: "first",
-      isVerified: false
-    });
-    setIsPaymentModalOpen(true);
-  };
+      // === 2. LOAD THE PDF AND PREPARE SIGNATURE IMAGES ===
+      const pdfDoc = await PDFDocument.load(pdfResponse.data);
+      
+      const guardianSignatureUrl = guardianSigPad.current.toDataURL('image/png');
+      const adminSignatureUrl = adminSigPad.current.toDataURL('image/png');
 
-  const closeModal = () => {
-    setIsDetailModalOpen(false);
-    setIsPaymentModalOpen(false);
-    setSelectedStudent(null);
-    setStudentDetails(null);
-    setPaymentError("");
-  };
+      const [guardianPngBytes, adminPngBytes] = await Promise.all([
+        fetch(guardianSignatureUrl).then((res) => res.arrayBuffer()),
+        fetch(adminSignatureUrl).then((res) => res.arrayBuffer()),
+      ]);
 
-const updatePaymentFlags = async (student, academicYearId, paymentStatus, paidAmount) => {
-  if (!student) {
-    console.error("Cannot update payment flags: Student data missing.");
-    return;
-  }
+      const guardianImage = await pdfDoc.embedPng(guardianPngBytes);
+      const adminImage = await pdfDoc.embedPng(adminPngBytes);
 
-  // --- NEW ROBUST LOGIC TO FIND THE AGREEMENT ---
-  let currentAgreement = null;
-  const agreementData = student.financialAgreement;
+      // === 3. EMBED THE SIGNATURES ONTO THE PDF ===
+      const page = pdfDoc.getPages()[0]; 
+      const { width } = page.getSize();
 
-  if (Array.isArray(agreementData)) {
-    // Case 1: The data is an array, as originally expected.
-    console.log("Agreement data is an ARRAY. Searching within it.");
-    currentAgreement = agreementData.find(a => a.academic_year === academicYearId);
-  } else if (agreementData && typeof agreementData === 'object') {
-    // Case 2: The data is a single object.
-    console.log("Agreement data is an OBJECT. Checking it directly.");
-    // We check if this single object's academic_year matches what we need.
-    if (agreementData.academic_year === academicYearId) {
-      currentAgreement = agreementData;
-    }
-  }
-  // --- END OF NEW LOGIC ---
-
-  if (!currentAgreement) {
-    // This will now only trigger if the data is truly missing or the ID doesn't match
-    console.error("No financial agreement found for the current academic year:", academicYearId);
-    console.log("This was the data we searched in:", agreementData); // Extra log for help
-    return;
-  }
-
-  // The rest of the function remains the same...
-
-  const payload = {};
-  const statusToFieldMap = {
-    first: "first_installment_paid",
-    second: "second_installment_paid",
-    third: "third_installment_paid",
-    fourth: "fourth_installment_paid",
-    full: "payment_completed"
-  };
-  const fieldToUpdate = statusToFieldMap[paymentStatus];
-  if (fieldToUpdate) {
-    payload[fieldToUpdate] = true;
-  }
-
-  const remainingAmount = parseFloat(student.pendingAmount.toFixed(2));
-  const amountBeingPaid = parseFloat(paidAmount.toFixed(2));
-  const isCompleted = amountBeingPaid >= remainingAmount - 0.01;
-
-  if (isCompleted) {
-    payload.payment_completed = true;
-  }
-
-  if (Object.keys(payload).length === 0) {
-    console.log("No payment flags to update.");
-    return;
-  }
-
-  try {
-    const response = await axios.patch(
-      `${import.meta.env.VITE_API_BASE_URL}/students/update-payment-flag/${currentAgreement.id}/`,
-      payload,
-      {
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-    );
-    if (response.data) {
-      console.log("Payment flags updated successfully with payload:", payload);
-    }
-  } catch (err) {
-    console.error("Failed to update payment flags:", err.response?.data || err.message);
-  }
-};
-
-const handlePaymentSubmit = async (e) => {
-  e.preventDefault();
-
-  setPaymentLoading(true);
-  setPaymentError("");
-
-  try {
-    if (!selectedStudent) {
-      throw new Error("No student selected");
-    }
-
-    const totalFees = parseFloat(selectedStudent.totalFees.toFixed(2));
-    const paidAmount = parseFloat(selectedStudent.paidAmount.toFixed(2));
-    const remainingAmount = parseFloat((totalFees - paidAmount).toFixed(2));
-
-    const selectedInstallment = availableInstallments.find(
-      (i) => i.value === paymentData.paymentStatus
-    );
-
-    if (!selectedInstallment) {
-      throw new Error("No installment selected");
-    }
-
-    const isFinalPayment = remainingAmount <= parseFloat(selectedInstallment.amount) + 0.01;
-    const amountToPay = isFinalPayment ? remainingAmount : parseFloat(selectedInstallment.amount);
-
-    if (amountToPay <= 0) {
-      throw new Error("Payment amount must be greater than zero");
-    }
-
-    const formData = new FormData();
-    formData.append("student", selectedStudent.id);
-    formData.append("academic_year", selectedStudent.academicYearId);
-    formData.append("payment_status", paymentData.paymentStatus);
-    formData.append("paid_amount", amountToPay.toFixed(2));
-
-    if (paymentData.paymentSlip) {
-      formData.append("payment_slip", paymentData.paymentSlip);
-    }
-
-    const response = await axios.post(
-      `${import.meta.env.VITE_API_BASE_URL}/students/payment-history/`,
-      formData,
-      {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      }
-    );
-
-    if (response.data) {
-      toast.success("Payment recorded successfully!", {
-        autoClose: 2000,
+      // Adjust X/Y coordinates as needed for your template
+      page.drawImage(guardianImage, {
+        x: 50,
+        y: 150,
+        width: 100,
+        height: 50,
       });
 
-      // *** NEW: Call the function to update payment flags ***
-     await updatePaymentFlags(
-        selectedStudent, 
-        selectedYear, 
-        paymentData.paymentStatus, 
-        amountToPay
+      page.drawImage(adminImage, {
+        x: width - 170,
+        y: 150,
+        width: 130,
+        height: 100,
+      });
+
+      // === 4. SAVE THE MODIFIED PDF AND PREPARE FOR UPLOAD ===
+      const signedPdfBytes = await pdfDoc.save();
+      const blob = new Blob([signedPdfBytes], { type: 'application/pdf' });
+
+      const formData = new FormData();
+      
+      // Append the signed PDF file
+      formData.append("payment_slip", blob, `signed-receipt-${signingPaymentInfo.paymentId}.pdf`);
+      
+      // Append the verification status
+      formData.append("is_verified_by_accountant", 'true');
+      
+      // --- CORRECTLY PASSING TOTAL AND REMAINING AMOUNTS ---
+      // These values are read from the `signingPaymentInfo` state.
+      formData.append("total_amount", signingPaymentInfo.totalFees.toFixed(2));
+      formData.append("remaining_amount", signingPaymentInfo.pendingAmount.toFixed(2));
+      // --------------------------------------------------------
+
+      // === 5. UPLOAD THE FINAL, SIGNED PDF AND DATA TO THE SERVER ===
+      // This is the API call that sends the data
+      await axios.patch(
+          `${import.meta.env.VITE_API_BASE_URL}/students/payment-history/${signingPaymentInfo.paymentId}/`,
+          formData,
+          {
+            headers: {
+              // The browser will set the correct Content-Type for multipart/form-data
+              // so you don't need to set it manually here.
+            }
+          }
       );
 
-      // Refresh data and close modal as before
-      await fetchStudentData(selectedYear);
-      closeModal();
-    } else {
-      throw new Error(response.data.message || "Payment failed");
+      toast.success("Receipt signed and updated successfully!");
+      
+      // Trigger a direct download for the user's convenience
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = downloadUrl;
+      a.download = `receipt-signed-${signingPaymentInfo.paymentId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      a.remove();
+      
+      closeSignatureModal();
+      await fetchStudentData(selectedYear); // Refresh the data grid
+
+    } catch (error) {
+        console.error("Error during client-side signing process:", error);
+        toast.error("Failed to sign and update receipt. Please try again.");
+    } finally {
+        setIsAttachingSignature(false);
     }
-  } catch (err) {
-    console.error("Payment error:", err);
-    setPaymentError(
-      err.response?.data?.message ||
-      err.response?.data?.error ||
-      err.message ||
-      "Failed to process payment"
-    );
-  } finally {
-    setPaymentLoading(false);
-  }
-};
+  };
 
-
-
-const getAvailablePayments = (student: any) => {
-      if (!student?.financialAgreement) return [];
-      
-      const agreement = student.financialAgreement;
-      const totalFees = parseFloat(agreement.total_fees_omr);
-      const payments = [];
-      
-      // Calculate remaining amount to prevent overpayment
-      const remainingAmount = totalFees - student.paidAmount;
-
-      // For one-time payment plan
-      if (agreement.installment_plan === "one") {
-        return [{
-          value: "full",
-          label: `Full Payment (${totalFees.toFixed(2)} OMR)`,
-          amount: Math.min(remainingAmount, totalFees).toFixed(2)
-        }];
-      }
-      
-      // For two-installment plan
-      if (agreement.installment_plan === "two") {
-        const installmentAmount = (totalFees / 2).toFixed(2);
-        
-        if (!agreement.first_installment_paid) {
-          payments.push({ 
-            value: "first", 
-            label: `First Installment (50% - ${installmentAmount} OMR)`,
-            amount: Math.min(remainingAmount, parseFloat(installmentAmount)).toFixed(2)
-          });
-        }
-        
-        if (agreement.first_installment_paid && !agreement.second_installment_paid) {
-          payments.push({ 
-            value: "second", 
-            label: `Second Installment (50% - ${installmentAmount} OMR)`,
-            amount: Math.min(remainingAmount, parseFloat(installmentAmount)).toFixed(2)
-          });
-        }
-        
-        return payments;
-      }
-      
-      // For four-installment plan
-      if (agreement.installment_plan === "four") {
-        const installmentAmount = (totalFees / 4).toFixed(2);
-        
-        if (!agreement.first_installment_paid) {
-          payments.push({ 
-            value: "first", 
-            label: `First Installment (25% - ${installmentAmount} OMR)`,
-            amount: Math.min(remainingAmount, parseFloat(installmentAmount)).toFixed(2)
-          });
-        }
-        
-        if (agreement.first_installment_paid && !agreement.second_installment_paid) {
-          payments.push({ 
-            value: "second", 
-            label: `Second Installment (25% - ${installmentAmount} OMR)`,
-            amount: Math.min(remainingAmount, parseFloat(installmentAmount)).toFixed(2)
-          });
-        }
-        
-        if (agreement.second_installment_paid && !agreement.third_installment_paid) {
-          payments.push({ 
-            value: "third", 
-            label: `Third Installment (25% - ${installmentAmount} OMR)`,
-            amount: Math.min(remainingAmount, parseFloat(installmentAmount)).toFixed(2)
-          });
-        }
-        
-        if (agreement.third_installment_paid && !agreement.fourth_installment_paid) {
-          payments.push({ 
-            value: "fourth", 
-            label: `Fourth Installment (25% - ${installmentAmount} OMR)`,
-            amount: Math.min(remainingAmount, parseFloat(installmentAmount)).toFixed(2)
-          });
-        }
-        
-        return payments;
-      }
-      
-      return payments;
-    };
-
-  const stats = [
-    { 
-      title: 'Total Revenue', 
-      titleAr: 'إجمالي الإيرادات', 
-      value: yearlyData[0]?.revenue ? `${yearlyData[0].revenue} OMR` : '0 OMR', 
-      icon: () => <span className="font-bold text-green-600">OMR</span>, 
-      trend: '+0.0%' 
-    },
-    { 
-      title: 'Active Students', 
-      titleAr: 'الطلاب النشطون', 
-      value: yearlyData[0]?.students || '0', 
-      icon: Users, 
-      trend: '+0.0%' 
-    },
-    { 
-      title: 'Collection Rate', 
-      titleAr: 'معدل التحصيل', 
-      value: yearlyData[0]?.collectionRate ? `${yearlyData[0].collectionRate}%` : '0%', 
-      icon: TrendingUp, 
-      trend: '+0.0%' 
-    }
-  ];
 
   return (
     <div className="p-6 space-y-6 bg-gray-50 min-h-screen">
@@ -806,7 +1023,7 @@ const getAvailablePayments = (student: any) => {
                   )}
 
                   {/* Payment History */}
-                  <Card>
+                   <Card>
                     <CardHeader>
                       <CardTitle>Payment History | سجل الدفع</CardTitle>
                     </CardHeader>
@@ -819,19 +1036,26 @@ const getAvailablePayments = (student: any) => {
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Receipt</th>
                               </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
                               {selectedStudent.paymentHistory.map((payment: any) => (
                                 <tr key={payment.id}>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{payment.date_of_payment}</td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">{payment.paid_amount} OMR</td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{payment.payment_status}</td>
                                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {payment.date_of_payment}
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">
-                                    {payment.paid_amount} OMR
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {payment.payment_status}
+                                    {/* THIS BUTTON NOW OPENS THE SIGNATURE MODAL */}
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleInitiateSigning(payment)}
+                                      disabled={downloadingReceiptId === payment.id}
+                                    >
+                                       <Edit className="h-4 w-4 mr-1" />
+                                       Sign & Download
+                                    </Button>
                                   </td>
                                 </tr>
                               ))}
@@ -839,12 +1063,10 @@ const getAvailablePayments = (student: any) => {
                           </table>
                         </div>
                       ) : (
-                        <div className="text-center py-4 text-gray-500">
-                          No payments recorded yet
-                        </div>
+                        <div className="text-center py-4 text-gray-500">No payments recorded yet</div>
                       )}
                     </CardContent>
-                  </Card>
+                </Card>
 
                   {/* Payment Summary */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1030,6 +1252,60 @@ const getAvailablePayments = (student: any) => {
         </Dialog>
         )}
       </div>
+
+   {/* === NEW: Signature Modal === */}
+      {isSignatureModalOpen && (
+        <Dialog open={isSignatureModalOpen} onOpenChange={setIsSignatureModalOpen}>
+            <DialogContent className="sm:max-w-2xl">
+                <DialogHeader>
+                    <DialogTitle>Add Signatures to Receipt</DialogTitle>
+                    <DialogDescription>
+                        Please provide the required signatures
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+                    {/* Guardian Signature */}
+                    <div className="space-y-2">
+                        <Label htmlFor="guardian-sig">Guardian Signature</Label>
+                        <div className="border rounded-md">
+                            <SignatureCanvas 
+                                ref={guardianSigPad}
+                                canvasProps={{ className: 'w-full h-32' }} 
+                            />
+                        </div>
+                        <Button size="sm" variant="ghost" onClick={() => guardianSigPad.current?.clear()}>Clear</Button>
+                    </div>
+
+                    {/* Admin/Employer Signature */}
+                    <div className="space-y-2">
+                        <Label htmlFor="admin-sig">Admin Signature</Label>
+                        <div className="border rounded-md">
+                            <SignatureCanvas 
+                                ref={adminSigPad}
+                                canvasProps={{ className: 'w-full h-32' }} 
+                            />
+                        </div>
+                        <Button size="sm" variant="ghost" onClick={() => adminSigPad.current?.clear()}>Clear</Button>
+                    </div>
+                </div>
+
+                <DialogFooter>
+                    <Button variant="outline" onClick={closeSignatureModal} disabled={isAttachingSignature}>Cancel</Button>
+                    <Button onClick={handleAttachSignatureAndDownload} disabled={isAttachingSignature}>
+                        {isAttachingSignature ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Processing...
+                            </>
+                        ) : "Attach & Download"}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+      )}
+
+
     </div>
   );
 };
