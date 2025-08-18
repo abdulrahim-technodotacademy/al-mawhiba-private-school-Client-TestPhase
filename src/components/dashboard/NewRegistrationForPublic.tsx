@@ -468,6 +468,25 @@ function NewRegistrationForPublic() {
     });
   };
 
+   useEffect(() => {
+    // Ensure both dates have a value before comparing
+    if (formData.date_of_birth && formData.admission_date) {
+      const dateOfBirth = new Date(formData.date_of_birth);
+      const admissionDate = new Date(formData.admission_date);
+
+      // Compare the dates
+      if (admissionDate < dateOfBirth) {
+        // If admission date is earlier, show an error and reset the date
+         alert("Admission date cannot be before the date of birth.");
+        
+        setFormData((prevFormData) => ({
+          ...prevFormData,
+          admission_date: "", // Reset the invalid admission date
+        }));
+      }
+    }
+  }, [formData.date_of_birth, formData.admission_date]); // Dependency array
+
 
   return (
    <>
