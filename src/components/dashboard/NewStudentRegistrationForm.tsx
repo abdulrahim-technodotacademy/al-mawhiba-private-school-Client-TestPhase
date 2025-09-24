@@ -197,6 +197,7 @@ const NewStudentRegistrationForm = () => {
           !formData.phone ||
           !formData.gender ||
           !formData.nationality ||
+          !formData.admission_class ||
           !formData.address ||
           !formData.city ||
           !formData.state ||
@@ -316,9 +317,13 @@ const NewStudentRegistrationForm = () => {
       const result = await response.json();
 
       console.log("Registration result:", result);
-
+    
+          if(result.statuscode == 400){
+          toast.error("Please check the form and complete all required fields before submitting.");
+        }
       if (!response.ok) {
         console.error("API Error:", result);
+ 
         toast.success(result.message);
         throw new Error(result.message || "Failed to submit registration");
       }

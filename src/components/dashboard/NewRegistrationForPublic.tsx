@@ -199,6 +199,7 @@ function NewRegistrationForPublic() {
           !formData.address ||
           !formData.city ||
           !formData.state ||
+          !formData.admission_class ||
           !formData.postal_code ||
           !formData.name_en ||
           !formData.name_ar ||
@@ -315,6 +316,10 @@ function NewRegistrationForPublic() {
       const result = await response.json();
 
       console.log("Registration result:", result);
+
+          if(result.statuscode == 400){
+          toast.error("Please check the form and complete all required fields before submitting.");
+      }
 
       if (!response.ok) {
         console.error("API Error:", result);
