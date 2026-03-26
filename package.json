@@ -47,7 +47,9 @@
     "countries-list": "^3.1.1",
     "country-list": "^2.3.0",
     "date-fns": "^3.6.0",
+    "docx": "^9.5.1",
     "embla-carousel-react": "^8.3.0",
+    "file-saver": "^2.0.5",
     "html2canvas": "^1.4.1",
     "i18n-iso-countries": "^7.14.0",
     "input-otp": "^1.2.4",
@@ -71,11 +73,13 @@
     "tailwind-merge": "^2.5.2",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.3",
+    "xlsx": "^0.18.5",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",
     "@tailwindcss/typography": "^0.5.15",
+    "@types/file-saver": "^2.0.7",
     "@types/node": "^22.5.5",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",

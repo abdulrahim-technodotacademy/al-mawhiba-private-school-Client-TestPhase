@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, User, Eye } from "lucide-react";
-import { toast } from "sonner";
+import Swal from 'sweetalert2';
 
 interface StudentSearchFormProps {
   onStudentFound: (student: any) => void;
@@ -57,7 +57,14 @@ const StudentSearchForm = ({ onStudentFound }: StudentSearchFormProps) => {
     e.preventDefault();
     
     if (!searchCriteria.searchType || !searchCriteria.searchValue) {
-      toast.error("Please select search type and enter search value");
+      Swal.fire({
+        title: 'Error!',
+        text: 'Please select search type and enter search value',
+        icon: 'error',
+        timer: 5000,
+        timerProgressBar: true,
+        confirmButtonText: 'OK'
+      });
       return;
     }
 
@@ -77,10 +84,24 @@ const StudentSearchForm = ({ onStudentFound }: StudentSearchFormProps) => {
     });
 
     if (foundStudent) {
-      toast.success("Student found successfully!");
+      Swal.fire({
+        title: 'Success!',
+        text: 'Student found successfully!',
+        icon: 'success',
+        timer: 5000,
+        timerProgressBar: true,
+        confirmButtonText: 'OK'
+      });
       onStudentFound(foundStudent);
     } else {
-      toast.error("No student found with the given criteria");
+      Swal.fire({
+        title: 'Error!',
+        text: 'No student found with the given criteria',
+        icon: 'error',
+        timer: 5000,
+        timerProgressBar: true,
+        confirmButtonText: 'OK'
+      });
     }
   };
 
@@ -105,7 +126,7 @@ const StudentSearchForm = ({ onStudentFound }: StudentSearchFormProps) => {
                   <SelectValue placeholder="Select search type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="studentId">Student ID | رقم الطالب</SelectItem>
+                  <SelectItem value="studentId">Admission Number | رقم القبول</SelectItem>
                   <SelectItem value="name">Student Name | اسم الطالب</SelectItem>
                   <SelectItem value="guardian">Guardian Name | اسم ولي الأمر</SelectItem>
                 </SelectContent>

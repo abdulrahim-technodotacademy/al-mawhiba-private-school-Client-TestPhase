@@ -43,7 +43,7 @@ const StudentDetailsView = ({ student, onEdit, onPromote }: StudentDetailsViewPr
             
             <div className="space-y-3">
               <div>
-                <label className="text-sm font-medium text-gray-600">Student ID | رقم الطالب</label>
+                <label className="text-sm font-medium text-gray-600">Admission Number | رقم القبول</label>
                 <p className="font-medium">{student.studentId}</p>
               </div>
               

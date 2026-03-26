@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -27,6 +27,8 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  FilterX,
+  Clock,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import NewStudentRegistrationForm from "./NewStudentRegistrationForm";
@@ -76,6 +78,12 @@ type Department = {
    department_name: string;
 };
 
+type Section = {
+  id: string;
+  name: string;
+  department: string;
+};
+
 
 
 const RegistrationDashboard = () => {
@@ -83,19 +91,33 @@ const RegistrationDashboard = () => {
   const [activeTab, setActiveTab] = useState<"search" | "new" | "promotion">(
     "new"
   );
-   const [departments, setDepartments] = useState<Department[]>([]);
-   const [sections, setSections] = useState([]);
+  const location = useLocation();
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tab = params.get('tab');
+    if (tab === 'search' || tab === 'new' || tab === 'promotion') {
+      setActiveTab(tab as any);
+    }
+  }, [location.search]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [sections, setSections] = useState([]);
   const [classList, setClassList] = useState<string[]>([]);
   const [selectedClass, setSelectedClass] = useState<string>("");
   const [students, setStudents] = useState<Student[]>([]);
+    // State for promotion tab filters
 
-    const [filteredSections, setFilteredSections] = useState([]);
-    const [selectedDepartment, setSelectedDepartment] = useState('');
-    const [selectedSection, setSelectedSection] = useState('');
-const [promotingStudentId, setPromotingStudentId] = useState<string | null>(null);
-  const [selectedStudents, setSelectedStudents] = useState<
-    Record<string, boolean>
-  >({});
+  const [selectedFilterSection, setSelectedFilterSection] = useState<string>('');
+  const [filterableSections, setFilterableSections] = useState<Section[]>([]);
+  const [selectedYear, setSelectedYear] = useState<string>('');
+const [academicYears, setAcademicYears] = useState<string[]>([])
+  const [filteredSections, setFilteredSections] = useState([]);
+  const [selectedDepartment, setSelectedDepartment] = useState('');
+  const [selectedSection, setSelectedSection] = useState('');
+  const [promotingStudentId, setPromotingStudentId] = useState<string | null>(null);
+    const [selectedStudents, setSelectedStudents] = useState<
+      Record<string, boolean>
+    >({});
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [verificationStatus, setVerificationStatus] = useState<
@@ -108,11 +130,11 @@ const [promotingStudentId, setPromotingStudentId] = useState<string | null>(null
 
 
 const loadStudents = async () => {
-  setLoading(true);
+ 
 
   try {
     const token = localStorage.getItem("accessToken");
-
+     setLoading(true);
     const response = await fetch(
     //   `${import.meta.env.VITE_API_BASE_URL}/students/student/`,
       `${import.meta.env.VITE_API_BASE_URL}/students/get-studentdetails-all/`,
@@ -148,12 +170,13 @@ const loadStudents = async () => {
       nextClass: "", // Optional: Update this if logic is available
       nextSection: "",
       status: student.is_verified_registration_officer ? "verified" : "pending",
-      registrationDate: student.admission_date,
+      registrationDate: student.admission_date || student.created_at || (student.other_datas?.admission_date) || "N/A",
       isNewRegistration: true,
       guardian: student.guardian,
       documents: [], // Populate this if available
     }));
 
+    
 
  
 
@@ -165,14 +188,20 @@ const loadStudents = async () => {
 
    const uniqueClasses = Array.from(
       new Set(studentsData.map((student) => student.currentClass))
+      
     ).sort((a, b) => {
       return isNaN(Number(a)) || isNaN(Number(b))
         ? a.localeCompare(b)
         : Number(a) - Number(b);
     });
+     const uniqueYears = Array.from(
+    new Set(studentsData.map(student => new Date(student.registrationDate).getFullYear().toString()))
+  ).sort((a, b) => Number(b) - Number(a)); // Sort years in descending order
 
     setClassList(uniqueClasses);
     setStudents(studentsData);
+  setAcademicYears(uniqueYears); // Store the extracted years in state
+
 
   } catch (error) {
     console.error("Error loading students:", error);
@@ -242,15 +271,26 @@ const loadStudents = async () => {
 
   useEffect(() => {
     fetchDepartments();
-      fetchSections();
-    if (activeTab === "search" || activeTab === "promotion") {
-      loadStudents();
-    }
-  }, [activeTab]);
+    fetchSections();
+    loadStudents();
+  }, []);
 
 const handleClassChange = (classValue: string) => {
-  setSelectedClass(classValue);
-  // Don't filter students here - we'll use filteredStudents for display
+setSelectedClass(classValue);
+  setSelectedFilterSection(''); // Reset section filter when class changes
+
+  // Find the department object corresponding to the selected class name
+  const department = departments.find(d => d.department_name === classValue);
+
+  if (department) {
+    // Filter the main sections list to get sections for this department
+    const relevantSections = sections.filter(s => s.department === department.id);
+    setFilterableSections(relevantSections);
+  } else {
+    // If no class is selected or found, clear the sections list
+    setFilterableSections([]);
+  }
+
   setSelectedStudents({});
 }
 
@@ -371,13 +411,14 @@ const promoteStudent = async (studentId: string, newClass: string, newSection: s
 
     if (!promoteRes.ok) throw new Error("Failed to promote");
 
-   
     toast({
-      title: "Student Promoted",
-      description: "Refreshing student data...",
+      title: "Success! 🎉",
+      description: "Student has been promoted successfully. Refreshing data...",
+      variant: "default",
+      className: "bg-green-600 text-white border-none font-bold",
     });
 
-    // Reload the promotion tab data
+    // Provide immediate feedback by refreshing the lists
     await loadStudents();
 
   } catch (err) {
@@ -391,49 +432,144 @@ const promoteStudent = async (studentId: string, newClass: string, newSection: s
     setPromotingStudentId(null); // Reset promoting student ID
   }
 };
+const handleYearChange = (yearValue: string) => {
+  setSelectedYear(yearValue);
+  // Reset dependent filters for a better user experience
+  setSelectedClass('');
+  setSelectedFilterSection('');
+  setFilterableSections([]);
+};
 
+const resetFilters = () => {
+  setSelectedYear('');
+  setSelectedClass('');
+  setSelectedFilterSection('');
+  setFilterableSections([]);
+  setVerificationStatus('all');
+  setSearchTerm('');
+};
 
 const filteredStudents = students.filter((student) => {
+  // Common search logic for all tabs
   const searchLower = searchTerm.toLowerCase();
   const nameEn = student.name_en?.toLowerCase() || '';
   const nameAr = student.name_ar?.toLowerCase() || '';
   const admissionNumber = student.admission_number?.toLowerCase() || '';
   
-  // Special handling for AMPS number search (exact match or partial)
   const isAMPSearch = searchLower.startsWith('amps');
   const matchesAMPS = isAMPSearch && admissionNumber.includes(searchLower);
   
   const matchesSearch = 
-    matchesAMPS || // AMPS number match
-    nameEn.includes(searchLower) || // Name match
-    nameAr.includes(searchLower); // Arabic name match
-  
-  const matchesStatus = verificationStatus === "all" || student.status === verificationStatus;
-  const matchesClass = !selectedClass || student.currentClass === selectedClass;
-  
-  return matchesSearch && matchesStatus && matchesClass;
-});
+    !searchTerm ||
+    matchesAMPS ||
+    nameEn.includes(searchLower) ||
+    nameAr.includes(searchLower);
 
+  if (!matchesSearch) {
+    return false;
+  }
+
+  // Tab-specific filtering logic
+  if (activeTab === 'search') {
+    const matchesStatus = verificationStatus === "all" || student.status === verificationStatus;
+    const matchesClass = !selectedClass || student.currentClass === selectedClass;
+    const matchesSection = !selectedFilterSection || student.currentSection === selectedFilterSection;
+    
+    return matchesStatus && matchesClass && matchesSection;
+  }
+
+  if (activeTab === 'promotion') {
+    const matchesClass = !selectedClass || student.currentClass === selectedClass;
+    const matchesSection = !selectedFilterSection || student.currentSection === selectedFilterSection;
+
+     return matchesClass && matchesSection;
+  }
+  
+  return true; // Should not be reached if a tab is active
+})
+.sort((a, b) => {
+  // Sort only on the "Search & Verify" tab
+  if (activeTab === 'search') {
+    const statusOrder = {
+      pending: 1,
+      rejected: 2,
+      verified: 3,
+    };
+    return (statusOrder[a.status] || 2) - (statusOrder[b.status] || 2);
+  }
+  return 0; // No sorting on other tabs
+});
   return (
-<div className="p-4 md:p-6 space-y-4 md:space-y-6">
-  {/* Header */}
-  <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-    <div>
-      <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
-        Registration Officer
-      </h1>
-      <p className="text-gray-600" dir="rtl">
-        موظف تسجيل
-      </p>
+<div className="p-6 md:p-8 space-y-6 max-w-[1600px] mx-auto">
+  {/* Header Section */}
+  <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 pb-6 border-b border-gray-100">
+    <div className="flex items-center gap-4">
+      <div className="bg-blue-600 p-2.5 rounded-xl shadow-lg shadow-blue-200">
+        <Users className="h-6 w-6 text-white" />
+      </div>
+      <div>
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">
+          Registration Officer
+        </h1>
+        <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mt-0.5" dir="rtl">
+          موظف تسجيل
+        </p>
+      </div>
     </div>
-    <Button
-      className="bg-blue-600 hover:bg-blue-700 w-full md:w-auto"
-      onClick={() => setActiveTab("new")}
-    >
-      <UserPlus className="mr-2 h-4 w-4" />
-      <span className="hidden md:inline">New Registration | تسجيل جديد</span>
-      <span className="md:hidden">New Registration</span>
-    </Button>
+    <div className="flex items-center gap-3 w-full lg:w-auto">
+      <Button
+        className="bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all h-11 px-8 rounded-full font-semibold text-sm group"
+        onClick={() => setActiveTab("new")}
+      >
+        <UserPlus className="mr-2 h-4 w-4 transition-transform group-hover:scale-110" />
+        <span>New Registration | تسجيل جديد</span>
+      </Button>
+    </div>
+  </div>
+
+  {/* Summary Metrics */}
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <Card className="bg-gradient-to-br from-blue-50 to-white border-blue-100 shadow-sm transition-all hover:shadow-md">
+      <CardContent className="p-4 flex items-center gap-4">
+        <div className="bg-blue-100 p-2.5 rounded-xl">
+          <Users className="h-5 w-5 text-blue-600" />
+        </div>
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 mb-0.5">Total Students</p>
+          <h2 className="text-2xl font-bold text-gray-900 leading-tight">
+            {students.length}
+          </h2>
+        </div>
+      </CardContent>
+    </Card>
+
+    <Card className="bg-gradient-to-br from-yellow-50 to-white border-yellow-100 shadow-sm transition-all hover:shadow-md">
+      <CardContent className="p-4 flex items-center gap-4">
+        <div className="bg-yellow-100 p-2.5 rounded-xl">
+          <Clock className="h-5 w-5 text-yellow-600" />
+        </div>
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-yellow-600 mb-0.5">Pending Verification</p>
+          <h2 className="text-2xl font-bold text-gray-900 leading-tight">
+            {students.filter(s => s.status === 'pending').length}
+          </h2>
+        </div>
+      </CardContent>
+    </Card>
+
+    <Card className="bg-gradient-to-br from-green-50 to-white border-green-100 shadow-sm transition-all hover:shadow-md">
+      <CardContent className="p-4 flex items-center gap-4">
+        <div className="bg-green-100 p-2.5 rounded-xl">
+          <CheckCircle2 className="h-5 w-5 text-green-600" />
+        </div>
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-green-600 mb-0.5">Verified Students</p>
+          <h2 className="text-2xl font-bold text-gray-900 leading-tight">
+            {students.filter(s => s.status === 'verified').length}
+          </h2>
+        </div>
+      </CardContent>
+    </Card>
   </div>
 
   {/* Tabs */}
@@ -459,7 +595,6 @@ const filteredStudents = students.filter((student) => {
         }`}
         onClick={() => {
           setActiveTab("search");
-          loadStudents();
         }}
       >
         <Search className="inline mr-2 h-4 w-4" />
@@ -474,7 +609,6 @@ const filteredStudents = students.filter((student) => {
         }`}
         onClick={() => {
           setActiveTab("promotion");
-          loadStudents();
         }}
       >
         <Users className="inline mr-2 h-4 w-4" />
@@ -486,37 +620,91 @@ const filteredStudents = students.filter((student) => {
 
   {/* Content */}
   <div className="space-y-4 md:space-y-6">
-    {activeTab === "search" && (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-            <span>Student Verification | التحقق من الطلاب</span>
-            <div className="flex flex-col md:flex-row gap-2 md:gap-4 w-full md:w-auto">
-              <Select
-                value={verificationStatus}
-                onValueChange={(value: any) => setVerificationStatus(value)}
+    <div className={activeTab === "search" ? "block" : "hidden"}>
+      <Card className="border-none shadow-sm overflow-hidden">
+        <CardHeader className="border-b bg-gray-50/30 pb-6">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div>
+              <CardTitle className="text-xl font-bold text-gray-900">
+                Student Verification
+              </CardTitle>
+              <p className="text-xs text-gray-500 mt-0.5">التحقق من الطلاب</p>
+            </div>
+            
+            <div className="flex flex-wrap items-center gap-3">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={resetFilters}
+                className="h-9 px-4 text-gray-500 hover:text-red-600 transition-colors border-gray-200"
+                title="Reset all filters"
               >
-                <SelectTrigger className="w-full md:w-[150px]">
-                  <SelectValue placeholder="Filter status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Students</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="verified">Verified</SelectItem>
-                </SelectContent>
-              </Select>
-              <div className="relative w-full md:w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  type="text"
-                 placeholder="Search by name or admission number..."
-                  className="pl-10 pr-4 py-2 border rounded-md w-full text-sm"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
+                <FilterX className="h-4 w-4 mr-2" />
+                Reset
+              </Button>
+
+              <div className="h-6 w-[1px] bg-gray-200 hidden sm:block mx-1" />
+              
+              <div className="flex items-center gap-2">
+                <Select onValueChange={handleClassChange} value={selectedClass}>
+                  <SelectTrigger className="w-[130px] h-9 bg-white border-gray-200 text-xs font-semibold">
+                    <SelectValue placeholder="Class" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Classes</SelectItem>
+                    {classList.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  onValueChange={(value) => setSelectedFilterSection(value)}
+                  value={selectedFilterSection}
+                  disabled={!selectedClass || filterableSections.length === 0}
+                >
+                  <SelectTrigger className="w-[130px] h-9 bg-white border-gray-200 text-xs font-semibold">
+                    <SelectValue placeholder="Section" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sections</SelectItem>
+                    {filterableSections.map((sec) => (
+                      <SelectItem key={sec.id} value={sec.name}>
+                        {sec.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={verificationStatus}
+                  onValueChange={(value: any) => setVerificationStatus(value)}
+                >
+                  <SelectTrigger className="w-[130px] h-9 bg-white border-gray-200 text-xs font-semibold">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="verified">Verified</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-          </CardTitle>
+          </div>
+
+          <div className="mt-4 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search by name, admission number..."
+              className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all outline-none"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -524,69 +712,75 @@ const filteredStudents = students.filter((student) => {
               <Loader2 className="h-8 w-8 animate-spin" />
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Student Name</TableHead>
-                    <TableHead className="whitespace-nowrap">Class</TableHead>
-                    <TableHead className="whitespace-nowrap">Reg Date</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredStudents.map((student) => (
-                    <TableRow key={student.id}>
+             <div className="overflow-x-auto border rounded-xl overflow-hidden">
+               <Table className="min-w-[1000px] border-collapse">
+                 <TableHeader className="bg-gray-50/50">
+                   <TableRow>
+                    <TableHead className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider border-b">Admission ID</TableHead>
+                    <TableHead className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider border-b">Student Name</TableHead>
+                    <TableHead className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider border-b">Class/Section</TableHead>
+                    <TableHead className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-wider border-b">Actions</TableHead>
+                   </TableRow>
+                 </TableHeader>
+                 <TableBody>
+                   {filteredStudents.map((student) => (
+                     <TableRow key={student.id} className="hover:bg-gray-50/80 transition-colors group">
+                       <TableCell className="px-6 py-5 whitespace-nowrap font-mono text-xs text-blue-600 font-semibold border-b border-gray-100">
+                         {student.admission_number || "N/A"}
+                       </TableCell>
                       <TableCell
-                        className="cursor-pointer hover:underline hover:text-blue-600 whitespace-nowrap"
+                        className="px-6 py-5 cursor-pointer hover:underline hover:text-blue-600 whitespace-nowrap border-b border-gray-100"
                         onClick={() => navigate(`/student/${student.id}`)}
                       >
-                        {student.name_en}
-                        {student.isNewRegistration && (
-                          <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
-                            New
+                        <div className="font-semibold text-gray-900">{student.name_en}</div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border ${
+                            student.status === "verified" ? "bg-green-50 text-green-700 border-green-100" :
+                            student.status === "pending" ? "bg-yellow-50 text-yellow-700 border-yellow-100" :
+                            "bg-red-50 text-red-700 border-red-100"
+                          }`}>
+                            {student.status}
                           </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap">{student.currentClass} {student.currentSection}</TableCell>
-                      <TableCell className="whitespace-nowrap">{student.registrationDate}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {student.status === "verified" && (
-                            <CheckCircle2 className="h-4 w-4 text-green-500" />
+                          {student.isNewRegistration && (
+                            <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[9px] font-bold uppercase rounded-full border border-blue-100">
+                              New registration
+                            </span>
                           )}
-                          {student.status === "pending" && (
-                            <Loader2 className="h-4 w-4 animate-spin text-yellow-500" />
-                          )}
-                          {student.status === "rejected" && (
-                            <AlertCircle className="h-4 w-4 text-red-500" />
-                          )}
-                          <span className="capitalize whitespace-nowrap">{student.status}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-right space-x-2 whitespace-nowrap">
+                      <TableCell className="px-6 py-5 whitespace-nowrap text-sm border-b border-gray-100">
+                        <span className="font-bold text-gray-700">{student.currentClass}</span>
+                        <span className="ml-2 px-2 py-0.5 bg-gray-100 text-gray-600 text-[10px] font-bold rounded-lg border border-gray-200 uppercase">{student.currentSection}</span>
+                      </TableCell>
+                      <TableCell className="px-6 py-5 text-right whitespace-nowrap border-b border-gray-100">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => navigate(`/student/${student.id}`)}
+                          className="h-8 text-blue-600 hover:bg-blue-50"
+                        >
+                          View Details
+                        </Button>
                         {student.status === "pending" && (
-                          <>
+                          <div className="inline-flex gap-2 ml-2">
                             <Button
-                              variant="outline"
                               size="sm"
                               onClick={() => verifyStudent(student.id)}
                               disabled={loading}
-                              className="h-8"
+                              className="h-8 bg-green-600 hover:bg-green-700 text-white shadow-sm"
                             >
                               Verify
                             </Button>
                             <Button
                               variant="outline"
                               size="sm"
-                              className="text-red-600 h-8"
+                              className="h-8 text-red-600 border-red-100 hover:bg-red-50 hover:text-red-700"
                               onClick={() => rejectStudent(student.id)}
                               disabled={loading}
                             >
                               Reject
                             </Button>
-                          </>
+                          </div>
                         )}
                       </TableCell>
                     </TableRow>
@@ -596,188 +790,260 @@ const filteredStudents = students.filter((student) => {
             </div>
           )}
           {filteredStudents.length === 0 && !loading && (
-            <div className="text-center py-8 text-gray-500">
-              No students found matching your criteria
+            <div className="text-center py-16 bg-gray-50/50 rounded-xl border-2 border-dashed border-gray-100">
+              <div className="bg-white p-4 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 shadow-sm">
+                <FilterX className="h-8 w-8 text-gray-300" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">No matching students</h3>
+              <p className="text-sm text-gray-500 max-w-xs mx-auto mt-1">
+                We couldn't find any students matching your current filters. Try adjusting your search or filters.
+              </p>
+              <Button 
+                variant="outline" 
+                onClick={resetFilters}
+                className="mt-6 h-10 px-6 rounded-full border-blue-200 text-blue-600 hover:bg-blue-50"
+              >
+                Clear all filters
+              </Button>
             </div>
           )}
         </CardContent>
       </Card>
-    )}
+    </div>
 
-{activeTab === "promotion" && (
-  <Card>
-    <CardHeader>
-      <CardTitle className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-        <span>Student Promotion | ترقية الطلاب</span>
-        <div className="flex flex-col md:flex-row gap-2 md:gap-4 w-full md:w-auto">
-          <Select onValueChange={handleClassChange} value={selectedClass}>
-            <SelectTrigger className="w-full md:w-[180px]">
-              <SelectValue placeholder="Filter by class" />
-            </SelectTrigger>
-            <SelectContent>
-              {classList.map((option) => (
-                <SelectItem key={option} value={option}>
-                  {option}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <div className="relative w-full md:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+  <div className={activeTab === "promotion" ? "block" : "hidden"}>
+      <Card className="border-none shadow-sm overflow-hidden">
+        <CardHeader className="border-b bg-gray-50/30 pb-6">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div>
+              <CardTitle className="text-xl font-bold text-gray-900">
+                Student Promotion
+              </CardTitle>
+              <p className="text-xs text-gray-500 mt-0.5">ترقية الطلاب</p>
+            </div>
+            
+            <div className="flex flex-wrap items-center gap-3">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={resetFilters}
+                className="h-9 px-4 text-gray-500 hover:text-red-600 transition-colors border-gray-200"
+                title="Reset all filters"
+              >
+                <FilterX className="h-4 w-4 mr-2" />
+                Reset
+              </Button>
+
+              <div className="h-6 w-[1px] bg-gray-200 hidden sm:block mx-1" />
+              
+              <div className="flex items-center gap-2">
+                <Select onValueChange={handleClassChange} value={selectedClass}>
+                  <SelectTrigger className="w-[150px] h-9 bg-white border-gray-200 text-xs font-semibold">
+                    <SelectValue placeholder="Current Class" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Classes</SelectItem>
+                    {classList.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  onValueChange={(value) => setSelectedFilterSection(value)}
+                  value={selectedFilterSection}
+                  disabled={!selectedClass || filterableSections.length === 0}
+                >
+                  <SelectTrigger className="w-[150px] h-9 bg-white border-gray-200 text-xs font-semibold">
+                    <SelectValue placeholder="Current Section" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sections</SelectItem>
+                    {filterableSections.map((sec) => (
+                      <SelectItem key={sec.id} value={sec.name}>
+                        {sec.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
             <input
               type="text"
-              placeholder="Search students..."
-              className="pl-10 pr-4 py-2 border rounded-md w-full text-sm"
+              placeholder="Search students to promote..."
+              className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all outline-none"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-        </div>
-      </CardTitle>
-    </CardHeader>
-    <CardContent className="space-y-4">
-      <div className="overflow-x-auto">
-        {filteredStudents.length > 0 ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Admission No.</TableHead>
-                <TableHead>Student Name</TableHead>
-                <TableHead className="whitespace-nowrap">Current Class</TableHead>
-                <TableHead>Next Class</TableHead>
-                <TableHead>Next Section</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredStudents.map((student) => (
-                <TableRow key={student.id}>
-                    <TableCell className="whitespace-nowrap">
-                    {student.admission_number}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap">
-                    {student.name_en}
-                    {student.isNewRegistration && (
-                      <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
-                        New
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap">
-                    {student.currentClass} {student.currentSection}
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={student.selectedDepartment || ""}
-                      onValueChange={(value) => {
-                        const updatedStudents = students.map((s) =>
-                          s.id === student.id
-                            ? {
-                                ...s,
-                                selectedDepartment: value,
-                                filteredSections: sections.filter(
-                                  (sec) => sec.department === value
-                                ),
-                                selectedSection: "", // reset section
-                              }
-                            : s
-                        );
-                        setStudents(updatedStudents);
-                      }}
-                    >
-                      <SelectTrigger className="w-[120px] md:w-[180px] text-sm">
-                        <SelectValue placeholder="Select Department" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {departments.map((dept) => (
-                          <SelectItem key={dept.id} value={dept.id}>
-                            {dept.department_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={student.selectedSection || ""}
-                      onValueChange={(value) => {
-                        const updatedStudents = students.map((s) =>
-                          s.id === student.id
-                            ? { ...s, selectedSection: value }
-                            : s
-                        );
-                        setStudents(updatedStudents);
-                      }}
-                    >
-                      <SelectTrigger className="w-[120px] md:w-[180px] text-sm">
-                        <SelectValue placeholder="Select Section" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(student.filteredSections || []).map((sec) => (
-                          <SelectItem key={sec.id} value={sec.id}>
-                            {sec.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs whitespace-nowrap ${
-                        student.status === "verified"
-                          ? "bg-green-100 text-green-800"
-                          : student.status === "pending"
-                          ? "bg-yellow-100 text-yellow-800"
-                          : "bg-red-100 text-red-800"
-                      }`}
-                    >
-                      {student.status}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={async () => {
-                        await promoteStudent(
-                          student.id,
-                          student.selectedDepartment,
-                          student.selectedSection
-                        );
-                      }}
-                      disabled={
-                        promotingStudentId !== null ||
-                        student.status !== "verified" ||
-                        !student.selectedDepartment ||
-                        !student.selectedSection
-                      }
-                      className="h-8"
-                    >
-                      {promotingStudentId === student.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        "Promote"
-                      )}
-                    </Button>
-                  </TableCell>
+        </CardHeader>
+      <CardContent className="space-y-4 p-0">
+        <div className="overflow-x-auto border-t border-gray-100">
+          {filteredStudents.length > 0 ? (
+            <Table className="min-w-[1200px] border-collapse">
+              <TableHeader className="bg-gray-50/50 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                <TableRow>
+                  <TableHead className="px-6 py-4 border-b">Admission ID</TableHead>
+                  <TableHead className="px-6 py-4 border-b">Student Name</TableHead>
+                  <TableHead className="px-6 py-4 border-b">Current Class</TableHead>
+                  <TableHead className="px-6 py-4 border-b">Next Class</TableHead>
+                  <TableHead className="px-6 py-4 border-b">Next Section</TableHead>
+                  <TableHead className="px-6 py-4 text-right border-b">Action</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        ) : (
-          <div className="text-center py-8 text-gray-500">
-            No students found matching your criteria
-          </div>
-        )}
-      </div>
-    </CardContent>
-  </Card>
-)}
+              </TableHeader>
+              <TableBody>
+                {filteredStudents.map((student) => (
+                  <TableRow key={student.id} className="hover:bg-gray-50/80 transition-colors group">
+                    <TableCell className="px-6 py-5 whitespace-nowrap font-mono text-xs text-blue-600 font-semibold border-b border-gray-100">
+                      {student.admission_number || "N/A"}
+                    </TableCell>
+                    <TableCell 
+                      className="px-6 py-5 cursor-pointer hover:underline hover:text-blue-600 whitespace-nowrap border-b border-gray-100"
+                      onClick={() => navigate(`/student/${student.id}`)}
+                    >
+                      <div className="font-semibold text-gray-900">{student.name_en}</div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border ${
+                          student.status === "verified" ? "bg-green-50 text-green-700 border-green-100" :
+                          student.status === "pending" ? "bg-yellow-50 text-yellow-700 border-yellow-100" :
+                          "bg-red-50 text-red-700 border-red-100"
+                        }`}>
+                          {student.status}
+                        </span>
+                        {student.isNewRegistration && (
+                          <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[9px] font-bold uppercase rounded-full border border-blue-100">
+                            New
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="px-6 py-5 whitespace-nowrap text-sm font-medium text-gray-600 border-b border-gray-100">
+                      {student.currentClass} <span className="text-gray-400 font-normal">{student.currentSection}</span>
+                    </TableCell>
+                    <TableCell className="px-6 py-5 border-b border-gray-100">
+                      <Select
+                        value={student.selectedDepartment || ""}
+                        onValueChange={(value) => {
+                          const updatedStudents = students.map((s) =>
+                            s.id === student.id
+                              ? {
+                                  ...s,
+                                  selectedDepartment: value,
+                                  filteredSections: sections.filter(
+                                    (sec) => sec.department === value
+                                  ),
+                                  selectedSection: "", // reset section
+                                }
+                              : s
+                          );
+                          setStudents(updatedStudents);
+                        }}
+                      >
+                        <SelectTrigger className="w-[140px] h-9 text-[11px] font-semibold bg-white border-gray-200 focus:ring-blue-500/10">
+                          <SelectValue placeholder="To Class" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {departments.map((dept) => (
+                            <SelectItem key={dept.id} value={dept.id} className="text-xs">
+                              {dept.department_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell className="px-6 py-5 border-b border-gray-100">
+                      <Select
+                        value={student.selectedSection || ""}
+                        onValueChange={(value) => {
+                          const updatedStudents = students.map((s) =>
+                            s.id === student.id
+                              ? { ...s, selectedSection: value }
+                              : s
+                          );
+                          setStudents(updatedStudents);
+                        }}
+                      >
+                        <SelectTrigger className="w-[120px] h-9 text-[11px] font-semibold bg-white border-gray-200 focus:ring-blue-500/10">
+                          <SelectValue placeholder="To Section" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(student.filteredSections || []).map((sec) => (
+                            <SelectItem key={sec.id} value={sec.id} className="text-xs">
+                              {sec.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell className="px-6 py-5 text-right whitespace-nowrap border-b border-gray-100">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => navigate(`/student/${student.id}`)}
+                        className="h-8 text-blue-600 hover:bg-blue-50 font-semibold"
+                      >
+                        Details
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          await promoteStudent(
+                            student.id,
+                            student.selectedDepartment,
+                            student.selectedSection
+                          );
+                        }}
+                        disabled={
+                          promotingStudentId !== null ||
+                          student.status !== "verified" ||
+                          !student.selectedDepartment ||
+                          !student.selectedSection
+                        }
+                        className="h-8 bg-blue-600 hover:bg-blue-700 text-white ml-2 shadow-sm font-semibold"
+                      >
+                        {promotingStudentId === student.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          "Promote"
+                        )}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="text-center py-20 bg-gray-50/50 rounded-xl m-6 border-2 border-dashed border-gray-100">
+              <div className="bg-white p-4 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 shadow-sm">
+                <Users className="h-8 w-8 text-gray-300" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">No students found</h3>
+              <p className="text-sm text-gray-500 max-w-xs mx-auto mt-1">
+                We couldn't find any students matching your criteria for promotion.
+              </p>
+              <Button 
+                variant="outline" 
+                onClick={resetFilters}
+                className="mt-6 h-10 px-6 rounded-full border-blue-200 text-blue-600 hover:bg-blue-50"
+              >
+                Clear Filters
+              </Button>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  </div>
 
-    {activeTab === "new" && (
-      <NewStudentRegistrationForm onSuccess={() => loadStudents()} />
-    )}
+<div className={activeTab === "new" ? "block" : "hidden"}>
+  <NewStudentRegistrationForm onSuccess={() => loadStudents()} />
+</div>
   </div>
 </div>
   );

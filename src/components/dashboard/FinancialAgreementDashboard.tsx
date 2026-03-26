@@ -19,10 +19,15 @@ import {
   XCircle,
   Send,
   Loader2,
+  Eye,
+  Search,
+  CheckCircle2,
+  FilterX,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import SignaturePad from "react-signature-canvas";
 import { PDFDocument } from "pdf-lib";
+import Swal from "sweetalert2";
 
 interface Department {
   id: string;
@@ -53,7 +58,7 @@ interface FinancialAgreement {
   contract_number: string;
   contract_type: string;
   registration_fees: string;
-  books_fees: string;
+  tution_fee: string;
   stationery_fees: string;
   transportation_fees: string;
   administrative_fees: string;
@@ -119,13 +124,11 @@ interface Student {
 }
 
 interface FeeStructure {
-  tuitionFee: number;
   registrationFee: number;
-  booksFee: number;
-  uniformFee: number;
+  tutionFee: number;
+  stationeryFee: number;
   transportFee: number;
-  examFee: number;
-  extraActivities: number;
+  adminFee: number;
   total: number;
   paymentPlan?: string;
   discount?: number;
@@ -159,12 +162,12 @@ interface AcademicYear {
 
 interface FinancialAgreementRequest {
   student: string;
-  contract_number: string;
+  contract_number?: string;
   academic_year: string;
   admission_class: string;
   contract_type: string;
   registration_fees: string;
-  books_fees: string;
+  tution_fee: string;
   stationery_fees: string;
   transportation_fees: string;
   administrative_fees: string;
@@ -198,17 +201,19 @@ const FinancialAgreementDashboard = () => {
   const [pendingStudents, setPendingStudents] = useState<Student[]>([]);
   const [agreements, setAgreements] = useState<Agreement[]>([]);
   const [feeStructure, setFeeStructure] = useState<FeeStructure>({
-    tuitionFee: 0,
     registrationFee: 0,
-    booksFee: 0,
-    uniformFee: 0,
+    tutionFee: 0,
+    stationeryFee: 0,
     transportFee: 0,
-    examFee: 0,
-    extraActivities: 0,
+    adminFee: 0,
     total: 0,
+    paymentPlan: "",
   });
+  const [isPdfLoading, setIsPdfLoading] = useState(false);
   const [agreementDetails, setAgreementDetails] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [classFilter, setClassFilter] = useState("all");
   const [signaturePad, setSignaturePad] = useState<SignaturePad | null>(null);
   const [isSigning, setIsSigning] = useState(false);
   const [currentSigningAgreement, setCurrentSigningAgreement] = useState<Agreement | null>(null);
@@ -223,133 +228,138 @@ const FinancialAgreementDashboard = () => {
   const [guardianSignaturePad, setGuardianSignaturePad] = useState(null);
   const [employerSignaturePad, setEmployerSignaturePad] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingStep, setProcessingStep] = useState("");
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<string>("");
 
+  // ... inside the RegistrationDashboard component
+
   // Load initial data
   // Update your useEffect hook for fetching data:
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const accessToken = localStorage.getItem("accessToken");
+  // In your student data mapping (inside the first useEffect)
+  const loadData = React.useCallback(async () => {
+    try {
+      const accessToken = localStorage.getItem("accessToken");
 
-        if (!accessToken) {
-          console.error("No access token found");
-          return;
-        }
-
-        const response = await fetch(
-          `${
-            import.meta.env.VITE_API_BASE_URL
-          }/students/studentslist-financial-agreement/`,
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        console.log("API Response:", data);
-
-        let studentsArray = [];
-
-        if (Array.isArray(data)) {
-          studentsArray = data;
-        } else if (data.data && Array.isArray(data.data)) {
-          studentsArray = data.data;
-        } else if (data.id) {
-          studentsArray = [data];
-        } else {
-          throw new Error("Unexpected API response format");
-        }
-
-        // Transform the data with updated status logic
-       // In your student data mapping
-// In your student data mapping (inside the first useEffect)
-const formattedStudents: Student[] = studentsArray.map((student: any) => {
-  let status: "not-created" | "pending" | "signed" | "Student-promoted";
-  let statusAr: string;
-  let showCreateButton = false;
-  let primaryAgreement = null; // This will hold the most relevant agreement
-
-  // Ensure financial_agreement is always an array and sort it by auto_id descending
-  // This puts the most recently created agreement at the start of the array.
-  const agreements = (
-    Array.isArray(student.financial_agreement) ? student.financial_agreement : []
-  ).sort((a, b) => b.auto_id - a.auto_id);
-
-  // The highest priority is to find an agreement that needs a signature.
-  const unverifiedAgreement = agreements.find(
-    (a) => a && a.is_verified_agreement_pdf === false
-  );
-  
-  const latestAgreement = agreements.length > 0 ? agreements[0] : null;
-
-  if (unverifiedAgreement) {
-    // If any agreement is unverified, the status is pending, regardless of others.
-    status = "pending";
-    statusAr = "بانتظار التحقق";
-    showCreateButton = false;
-    primaryAgreement = unverifiedAgreement; // The action should be on the unverified agreement.
-  } else if (agreements.length === 0) {
-    // If there are no agreements at all.
-    status = "not-created";
-    statusAr = "لم يتم الإنشاء";
-    showCreateButton = true;
-    primaryAgreement = null;
-  } else {
-    // All existing agreements are verified. Now, we check for other conditions.
-    if (
-      latestAgreement &&
-      student.admission_class &&
-      latestAgreement.admission_class !== student.admission_class.id
-    ) {
-      // If the latest agreement's class doesn't match the student's current class.
-      status = "Student-promoted";
-      statusAr = "عدم تطابق الصف";
-      showCreateButton = true; // Allow recreating the agreement for the new class.
-    } else {
-      // All agreements are verified and the class matches.
-      status = "signed";
-      statusAr = "تم التوقيع";
-      showCreateButton = false;
-    }
-    primaryAgreement = latestAgreement; // The primary agreement is the latest signed one.
-  }
-
-  return {
-    id: student.id?.toString() || "unknown-id",
-    name: `${student.en_first_name || ""} ${student.en_last_name || ""}`.trim(),
-    nameAr: `${student.ar_first_name || ""} ${student.ar_last_name || ""}`.trim(),
-    grade: student.admission_class?.department_name || "N/A",
-    type: student.section?.name || "N/A",
-    registrationDate: student.admission_date,
-    // Attach the single most relevant agreement for easy access in the UI
-    financial_agreement: primaryAgreement,
-    status,
-    statusAr,
-    showCreateButton,
-    guardianEmail: student.email || "",
-    rawData: student, // Keep the original full data for detailed operations
-  };
-});
-
-
-
-        setPendingStudents(formattedStudents);
-      } catch (error) {
-        console.error("Error fetching data:", error);
+      if (!accessToken) {
+        console.error("No access token found");
+        return;
       }
-    };
 
-    loadData();
+      const response = await fetch(
+        `${
+          import.meta.env.VITE_API_BASE_URL
+        }/students/studentslist-financial-agreement/`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log("API Response:", data);
+
+      let studentsArray = [];
+
+      if (Array.isArray(data)) {
+        studentsArray = data;
+      } else if (data.data && Array.isArray(data.data)) {
+        studentsArray = data.data;
+      } else if (data.id) {
+        studentsArray = [data];
+      } else {
+        throw new Error("Unexpected API response format");
+      }
+
+     const formattedStudents: Student[] = studentsArray.map((student: any) => {
+       let status: "not-created" | "pending" | "signed" | "Student-promoted";
+       let statusAr: string;
+       let showCreateButton = false;
+       let primaryAgreement = null;
+
+       const agreements = (
+         Array.isArray(student.financial_agreement) ? student.financial_agreement : []
+       ).sort((a, b) => b.auto_id - a.auto_id);
+
+       const unverifiedAgreement = agreements.find(
+         (a) => a && a.is_verified_agreement_pdf === false
+       );
+
+       const latestAgreement = agreements.length > 0 ? agreements[0] : null;
+
+       if (unverifiedAgreement) {
+         status = "pending";
+         statusAr = "بانتظار التحقق";
+         showCreateButton = false;
+         primaryAgreement = unverifiedAgreement;
+       } else if (agreements.length === 0) {
+         status = "not-created";
+         statusAr = "لم يتم الإنشاء";
+         showCreateButton = true;
+         primaryAgreement = null;
+       } else {
+         if (
+           latestAgreement &&
+           student.admission_class &&
+           latestAgreement.admission_class !== student.admission_class.id
+         ) {
+           status = "Student-promoted";
+           statusAr = "عدم تطابق الصف";
+           showCreateButton = true;
+         } else {
+           status = "signed";
+           statusAr = "تم التوقيع";
+           showCreateButton = false;
+         }
+         primaryAgreement = latestAgreement;
+       }
+
+       return {
+         id: student.id?.toString() || "unknown-id",
+         name: `${student.en_first_name || ""} ${student.en_last_name || ""}`.trim(),
+         nameAr: `${student.ar_first_name || ""} ${student.ar_last_name || ""}`.trim(),
+         grade: student.admission_class?.department_name || "N/A",
+         type: student.section?.name || "N/A",
+         registrationDate: student.admission_date,
+         financial_agreement: primaryAgreement,
+         status,
+         statusAr,
+         showCreateButton,
+         guardianEmail: student.email || "",
+         rawData: student,
+       };
+     });
+
+      // --- NEW SORTING LOGIC ---
+      const statusOrder = {
+        "pending": 1,
+        "not-created": 2,
+        "Student-promoted": 3,
+        "signed": 4,
+      };
+
+      const sortedStudents = formattedStudents.sort((a, b) => {
+        const orderA = statusOrder[a.status] || 99;
+        const orderB = statusOrder[b.status] || 99;
+        return orderA - orderB;
+      });
+      // --- END OF NEW SORTING LOGIC ---
+
+      setPendingStudents(sortedStudents);
+    } catch (error) {
+      console.error("Error fetching data:", error);
+    }
   }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
 useEffect(() => {
   const fetchAcademicYears = async () => {
@@ -390,14 +400,14 @@ const calculateTotal = () => {
   // Using explicit properties is clearer and safer than iterating over keys.
   const subtotal =
     (feeStructure.registrationFee || 0) +
-    (feeStructure.booksFee || 0) +
+    (feeStructure.tutionFee || 0) +
+    (feeStructure.stationeryFee || 0) +
+    (feeStructure.adminFee || 0) +
     (feeStructure.transportFee || 0);
-    // Add any other fees from your `feeStructure` state here if they contribute to the total
-    // e.g., + (feeStructure.uniformFee || 0)
 
   // 2. Determine the discount percentage based on the payment plan.
   // This is the key logic: 5% for 'one' installment, 0% for all others.
-  const discountPercentage = feeStructure.paymentPlan === "one" ? 5 : 0;
+  const discountPercentage = 0;
 
   // 3. Calculate the actual monetary value of the discount.
   const discountAmount = subtotal * (discountPercentage / 100);
@@ -427,7 +437,9 @@ useEffect(() => {
   calculateTotal();
 }, [
   feeStructure.registrationFee,
-  feeStructure.booksFee,
+  feeStructure.tutionFee,
+  feeStructure.stationeryFee,
+  feeStructure.adminFee,
   feeStructure.transportFee,
   feeStructure.paymentPlan,
 ]);
@@ -443,16 +455,33 @@ const handleCreateAgreement = (student: Student) => {
     );
   }
   setSelectedStudent(student);
+  
+  // Auto-populate guardian and contact information from student registration data
+  const guardian = student.rawData.guardian;
+  const rawData = student.rawData;
+  
+  if (guardian) {
+    // Map contacts from guardian or student fallbacks
+    setMotherMobile(guardian.phone2 || rawData.emergency_contact || "");
+    setFatherMobile(guardian.phone1 || rawData.home_contact || "");
+    setWorkPhone(guardian.work_phone || "");
+    setResidenceAddress(guardian.address || rawData.address || "");
+    setHouseNumber(rawData.house_number || "");
+  } else {
+    // Fallback directly to student fields if guardian object is missing
+    setMotherMobile(rawData.emergency_contact || "");
+    setFatherMobile(rawData.home_contact || "");
+    setResidenceAddress(rawData.address || "");
+    setHouseNumber(rawData.house_number || "");
+  }
+
   setFeeStructure({
     registrationFee: 200,
-    booksFee: 150,
+    tutionFee: 150,
+    stationeryFee: 20,
     transportFee: 300,
-    // Set other base fees here...
-    uniformFee: 100,
-    examFee: 50,
-    extraActivities: 75,
-    // --- Correction ---
-    paymentPlan: "one", // Default to one installment
+    adminFee: 10,
+    paymentPlan: "one",
     total: 0,
     discount: 0,
     subtotal: 0,
@@ -473,9 +502,13 @@ const handleCreateAgreement = (student: Student) => {
     setAgreements(
       agreements.map((a) => (a.id === agreement.id ? updatedAgreement : a))
     );
-    alert(
-      `Sent agreement to ${getStudent(agreement.studentId)?.guardianEmail}`
-    );
+    Swal.fire({
+      title: 'Success',
+      text: `Sent agreement to ${getStudent(agreement.studentId)?.guardianEmail}`,
+      icon: 'success',
+      timer: 5000,
+      timerProgressBar: true
+    });
   };
 
 
@@ -484,9 +517,14 @@ const handleCreateAgreement = (student: Student) => {
     return [...pendingStudents].find((s) => s.id === studentId);
   };
 
-  const filteredStudents = pendingStudents.filter(
-    (student) => statusFilter === "all" || student.status === statusFilter
-  );
+  const filteredStudents = pendingStudents.filter((student) => {
+    const matchesStatus = statusFilter === "all" || student.status === statusFilter;
+    const matchesClass = classFilter === "all" || student.grade === classFilter;
+    const matchesSearch =
+      student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      student.rawData.admission_number?.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesStatus && matchesClass && matchesSearch;
+  });
 
   const filteredAgreements = agreements.filter((agreement) => {
     if (activeTab === "esign") return true;
@@ -505,23 +543,31 @@ const handleCreateAgreement = (student: Student) => {
       return;
     }
 
+    if (!selectedAcademicYearId) {
+      setSubmitError("Please select an academic year");
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!feeStructure.paymentPlan) {
+      setSubmitError("Please select a payment plan");
+      setIsSubmitting(false);
+      return;
+    }
+
     const now = new Date();
-    const contractNumber = `FA-${new Date().getFullYear()}-${Math.floor(
-      Math.random() * 9000 + 1000
-    )}`;
 
     // Prepare the request payload
     const payload: FinancialAgreementRequest = {
       student: selectedStudent.id,
       academic_year: selectedAcademicYearId,
-      contract_number: contractNumber,
       admission_class: selectedStudent.rawData.admission_class.id,
       contract_type: "new",
       registration_fees: feeStructure.registrationFee.toFixed(3),
-      books_fees: feeStructure.booksFee.toFixed(3),
-      stationery_fees: "20.000", // Default value or make editable
+      tution_fee: feeStructure.tutionFee.toFixed(3),
+      stationery_fees: feeStructure.stationeryFee.toFixed(3),
       transportation_fees: feeStructure.transportFee.toFixed(3),
-      administrative_fees: "10.000", // Default value or make editable
+      administrative_fees: feeStructure.adminFee.toFixed(3),
       total_fees_omr: feeStructure.total.toFixed(3),
       total_fees_in_words: convertToArabicWords(feeStructure.total),
       installment_plan: getInstallmentPlan(feeStructure.paymentPlan),
@@ -533,17 +579,19 @@ const handleCreateAgreement = (student: Student) => {
       agreement_date: now.toISOString().split("T")[0],
     };
 
-    // Add installment dates if not full payment
-    // In your handleSubmitAgreement function, replace the installment date calculation with:
-    if (feeStructure.paymentPlan !== "one") {
+    // Add installment dates and amounts
+    if (feeStructure.paymentPlan === "one") {
+      payload.installment1_date = now.toISOString().split("T")[0];
+      payload.installment1_amount = feeStructure.total.toFixed(3);
+    } else {
       const firstInstallmentDate = new Date(now);
       firstInstallmentDate.setMonth(firstInstallmentDate.getMonth() + 1);
       payload.installment1_date = firstInstallmentDate
         .toISOString()
         .split("T")[0];
 
-      const installments = feeStructure.paymentPlan === "two" ? 2 : 4;
-      payload.installment1_amount = (feeStructure.total / installments).toFixed(
+      const installmentsCount = feeStructure.paymentPlan === "two" ? 2 : 4;
+      payload.installment1_amount = (feeStructure.total / installmentsCount).toFixed(
         3
       );
 
@@ -602,12 +650,16 @@ const handleCreateAgreement = (student: Student) => {
       const responseData = await response.json();
       console.log("Agreement submitted:", responseData);
 
-      setPendingStudents(
-        pendingStudents.filter((s) => s.id !== selectedStudent.id)
-      );
+      // Refresh data to update E-Signature tab and metrics
+      await loadData();
       resetForm();
-      alert("Agreement submitted successfully!");
-      window.location.reload();
+      await Swal.fire({
+        title: 'Success',
+        text: 'Agreement submitted successfully!',
+        icon: 'success',
+        timer: 5000,
+        timerProgressBar: true
+      });
       setActiveTab("pending");
     } catch (error) {
       console.error("Submission error:", error);
@@ -831,9 +883,11 @@ const handleCreateAgreement = (student: Student) => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg shadow-lg flex flex-col items-center">
             <Loader2 className="h-12 w-12 text-blue-500 animate-spin mb-4" />
-            <p className="text-lg font-medium">Processing Agreement...</p>
+            <p className="text-lg font-medium">
+              {processingStep || "Processing Agreement..."}
+            </p>
             <p className="text-sm text-gray-500">
-              Please wait while we save your signatures
+              Please wait...
             </p>
           </div>
         </div>
@@ -860,10 +914,10 @@ const handleCreateAgreement = (student: Student) => {
       {/* Tabs */}
       <div className="flex space-x-4 border-b">
         <button
-          className={`px-6 py-3 font-medium ${
+          className={`px-6 py-3 font-medium transition-colors ${
             activeTab === "pending"
-              ? "border-b-2 border-green-600 text-green-600"
-              : "text-gray-600"
+              ? "border-b-2 border-green-600 text-green-600 bg-green-50/50"
+              : "text-gray-600 hover:text-green-600 hover:bg-gray-50"
           }`}
           onClick={() => setActiveTab("pending")}
         >
@@ -871,21 +925,10 @@ const handleCreateAgreement = (student: Student) => {
           Pending Students | الطلاب المعلقة
         </button>
         <button
-          className={`px-6 py-3 font-medium ${
-            activeTab === "agreements"
-              ? "border-b-2 border-green-600 text-green-600"
-              : "text-gray-600"
-          }`}
-          onClick={() => setActiveTab("agreements")}
-        >
-          <FileText className="inline mr-2 h-4 w-4" />
-          Agreements | الاتفاقيات
-        </button>
-        <button
-          className={`px-6 py-3 font-medium ${
+          className={`px-6 py-3 font-medium transition-colors ${
             activeTab === "esign"
-              ? "border-b-2 border-green-600 text-green-600"
-              : "text-gray-600"
+              ? "border-b-2 border-green-600 text-green-600 bg-green-50/50"
+              : "text-gray-600 hover:text-green-600 hover:bg-gray-50"
           }`}
           onClick={() => setActiveTab("esign")}
         >
@@ -894,99 +937,243 @@ const handleCreateAgreement = (student: Student) => {
         </button>
       </div>
 
+      {/* Summary Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="bg-gradient-to-br from-yellow-50 to-white border-yellow-100 shadow-sm">
+          <CardContent className="p-4 flex items-center gap-4">
+            <div className="bg-yellow-100 p-2 rounded-lg">
+              <Clock className="h-5 w-5 text-yellow-600" />
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-yellow-600">Pending Verification</p>
+              <h2 className="text-2xl font-bold text-gray-900">
+                {pendingStudents.filter(s => s.status === 'pending').length}
+              </h2>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-blue-50 to-white border-blue-100 shadow-sm">
+          <CardContent className="p-4 flex items-center gap-4">
+            <div className="bg-blue-100 p-2 rounded-lg">
+              <FileText className="h-5 w-5 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-blue-600">Missing Agreements</p>
+              <h2 className="text-2xl font-bold text-gray-900">
+                {pendingStudents.filter(s => s.status === 'not-created').length}
+              </h2>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-green-50 to-white border-green-100 shadow-sm">
+          <CardContent className="p-4 flex items-center gap-4">
+            <div className="bg-green-100 p-2 rounded-lg">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-green-600">Completed (Signed)</p>
+              <h2 className="text-2xl font-bold text-gray-900">
+                {pendingStudents.filter(s => s.status === 'signed').length}
+              </h2>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Content */}
       <div className="space-y-6">
         {activeTab === "pending" && (
           <Card>
-            <CardHeader>
-              <CardTitle>Pending Students | الطلاب المعلقة</CardTitle>
-              <div className="mt-4">
-                <Label>Filter by Status | تصفية حسب الحالة</Label>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All | الكل</SelectItem>
-                    <SelectItem value="pending">Pending | معلق</SelectItem>
-                    <SelectItem value="not-created">
-                      Not-created | غير مخلوق
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+            <CardHeader className="pb-4">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <CardTitle className="text-xl font-bold whitespace-nowrap">
+                  Pending Students | الطلاب المعلقة
+                </CardTitle>
+                
+                <div className="flex flex-wrap items-center gap-4 bg-gray-50/50 p-2 rounded-lg border border-gray-100">
+                  <div className="relative flex-1 min-w-[200px]">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                    <Input
+                      placeholder="Search name or ID..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-9 h-9 text-sm bg-white border-gray-200 focus:ring-green-500"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Label className="whitespace-nowrap text-[10px] font-bold uppercase tracking-widest text-gray-400">Class</Label>
+                    <Select value={classFilter} onValueChange={setClassFilter}>
+                      <SelectTrigger className="w-[120px] h-9 text-sm bg-white border-gray-200">
+                        <SelectValue placeholder="All" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Classes</SelectItem>
+                        {Array.from(new Set(pendingStudents.map(s => s.grade))).sort().map(grade => (
+                          <SelectItem key={grade} value={grade}>{grade}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-center gap-2 border-l pl-4 border-gray-200">
+                    <Label className="whitespace-nowrap text-[10px] font-bold uppercase tracking-widest text-gray-400">Status</Label>
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                      <SelectTrigger className="w-[140px] h-9 text-sm bg-white border-gray-200">
+                        <SelectValue placeholder="Status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Status</SelectItem>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="not-created">Not-created</SelectItem>
+                        <SelectItem value="signed">Signed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </div>
             </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
+            <CardContent className="p-0 sm:p-6">
+              <div className="overflow-x-auto border rounded-md">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="sticky left-0 bg-gray-50 px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider z-10">
                         Student
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Class
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Grad
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Grade
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Admission Date
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Status
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="sticky right-0 bg-gray-50 px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.05)]">
                         Actions
                       </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredStudents.map((student) => (
-                      <tr key={student.id}>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="font-medium">{student.name}</div>
-                          <div className="text-gray-500" dir="rtl">
-                            {student.nameAr}
+                    {filteredStudents.length > 0 ? (
+                      (() => {
+                        let lastStatus = "";
+                        return filteredStudents.map((student) => {
+                          const showSeparator = statusFilter === "all" && student.status !== lastStatus;
+                          lastStatus = student.status;
+                          
+                          const rows = [];
+                          
+                          if (showSeparator) {
+                            rows.push(
+                              <tr key={`sep-${student.id}`} className="bg-gray-50/50">
+                                <td colSpan={5} className="px-6 py-2">
+                                  <div className="flex items-center">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                                      {student.status === "pending" ? "Pending Verification | بانتظار التحقق" :
+                                       student.status === "not-created" ? "To be Created | بانتظار الإنشاء" :
+                                       student.status === "Student-promoted" ? "Class Mismatch | عدم تطابق الصف" :
+                                       "Signed / Completed | تم التوقيع / مكتمل"}
+                                    </span>
+                                    <div className="flex-1 ml-4 h-[1px] bg-gray-200"></div>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          }
+                          
+                          rows.push(
+                            <tr key={student.id} className="hover:bg-gray-50 transition-colors group">
+                              <td className="sticky left-0 bg-white group-hover:bg-gray-50 px-4 sm:px-6 py-4 whitespace-nowrap z-10 shadow-[2px_0_5px_rgba(0,0,0,0.05)] md:shadow-none">
+                                <div className="font-medium text-gray-900">{student.name}</div>
+                                <div className="text-gray-500 text-xs" dir="rtl">
+                                  {student.nameAr}
+                                </div>
+                              </td>
+                              <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
+                                {student.grade}
+                              </td>
+                              <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
+                                <div>{student.type}</div>
+                                {student.typeAr && (
+                                  <div className="text-gray-400 text-xs" dir="rtl">
+                                    {student.typeAr}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-4 py-4 whitespace-nowrap">
+                                <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                  student.status === "signed" ? "bg-green-100 text-green-700" :
+                                  student.status === "pending" ? "bg-yellow-100 text-yellow-700 border border-yellow-200" :
+                                  student.status === "not-created" ? "bg-blue-50 text-blue-700 border border-blue-100" :
+                                  "bg-gray-100 text-gray-700 font-normal normal-case"
+                                }`}>
+                                  {student.status === "not-created" ? "Ready" : student.status}
+                                </span>
+                                <div className="text-gray-400 text-[10px] mt-0.5" dir="rtl">
+                                  {student.statusAr}
+                                </div>
+                              </td>
+                              <td className="sticky right-0 bg-white group-hover:bg-gray-50 px-4 sm:px-6 py-4 whitespace-nowrap z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.05)] md:shadow-none">
+                                {student.showCreateButton ? (
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleCreateAgreement(student)}
+                                    className="bg-green-600 hover:bg-green-700 text-white shadow-sm h-8 px-4"
+                                  >
+                                    <FileText className="mr-1.5 h-3.5 w-3.5" />
+                                    {student.status === "Student-promoted" 
+                                      ? "Recreate" 
+                                      : "Create"}
+                                  </Button>
+                                ) : student.status === "pending" ? (
+                                  <div className="flex items-center text-yellow-600 text-xs font-bold uppercase tracking-wider">
+                                    <Clock className="h-3.5 w-3.5 mr-1.5" />
+                                    Pending
+                                  </div>
+                                ) : student.status === "signed" ? (
+                                  <div className="flex items-center text-green-600 text-xs font-bold uppercase tracking-wider">
+                                    <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                                    Signed
+                                  </div>
+                                ) : null}
+                              </td>
+                            </tr>
+                          );
+                          
+                          return rows;
+                        });
+                      })()
+                    ) : (
+                      <tr>
+                        <td colSpan={5} className="px-6 py-16 text-center text-gray-400">
+                          <div className="flex flex-col items-center max-w-xs mx-auto">
+                            <div className="bg-gray-50 p-4 rounded-full mb-4">
+                              <FilterX className="h-10 w-10 text-gray-300" />
+                            </div>
+                            <h3 className="text-gray-900 font-semibold mb-1">No matching students</h3>
+                            <p className="text-sm mb-6">We couldn't find any student matching your current search or filters.</p>
+                            {(searchQuery || classFilter !== 'all' || statusFilter !== 'all') && (
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => {
+                                  setSearchQuery("");
+                                  setClassFilter("all");
+                                  setStatusFilter("all");
+                                }}
+                                className="border-green-200 text-green-700 hover:bg-green-50 hover:text-green-800"
+                              >
+                                Clear all filters
+                              </Button>
+                            )}
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {student.grade}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div>{student.type}</div>
-                          <div className="text-gray-500" dir="rtl">
-                            {student.typeAr}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {student.registrationDate}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div>{student.status}</div>
-                          <div className="text-gray-500" dir="rtl">
-                            {student.statusAr}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                      {student.showCreateButton ? (
-                        <Button
-                          onClick={() => handleCreateAgreement(student)}
-                          className="bg-green-600 hover:bg-green-700 text-white"
-                        >
-                          <FileText className="mr-2 h-4 w-4" />
-                          {student.status === "Student-promoted" 
-                            ? "Recreate Agreement" 
-                            : "Create Agreement"}
-                        </Button>
-                      ) : student.status === "pending" ? (
-                        <span className="text-yellow-600">Pending Verification</span>
-                      ) : student.status === "signed" ? (
-                        <span className="text-green-600">Agreement Signed</span>
-                      ) : null}
-                    </td>
                       </tr>
-                    ))}
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -1068,18 +1255,47 @@ const handleCreateAgreement = (student: Student) => {
                       />
                         </div>
                         <div>
-                          <Label>Books Fees (OMR)</Label>
+                          <Label>Tuition Fees (OMR)</Label>
                           <Input
                             type="number"
                             step="0.001"
-                            value={feeStructure.booksFee}
+                            value={feeStructure.tutionFee}
                             onChange={(e) => {
                               const value = parseFloat(e.target.value) || 0;
                               setFeeStructure((prev) => ({
                                 ...prev,
-                                booksFee: value,
+                                tutionFee: value,
                               }));
-                              calculateTotal();
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <Label>Stationery Fees (OMR)</Label>
+                          <Input
+                            type="number"
+                            step="0.001"
+                            value={feeStructure.stationeryFee}
+                            onChange={(e) => {
+                              const value = parseFloat(e.target.value) || 0;
+                              setFeeStructure((prev) => ({
+                                ...prev,
+                                stationeryFee: value,
+                              }));
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <Label>Administrative Fees (OMR)</Label>
+                          <Input
+                            type="number"
+                            step="0.001"
+                            value={feeStructure.adminFee}
+                            onChange={(e) => {
+                              const value = parseFloat(e.target.value) || 0;
+                              setFeeStructure((prev) => ({
+                                ...prev,
+                                adminFee: value,
+                              }));
                             }}
                           />
                         </div>
@@ -1095,14 +1311,15 @@ const handleCreateAgreement = (student: Student) => {
                                 ...prev,
                                 transportFee: value,
                               }));
-                              calculateTotal();
                             }}
                           />
                         </div>
                         <div>
-                          <Label>Payment Plan</Label>
+                          <Label className="flex items-center gap-1">
+                            Payment Plan <span className="text-red-500">*</span>
+                          </Label>
                           <Select
-                            value={feeStructure.paymentPlan || "one"}
+                            value={feeStructure.paymentPlan}
                             onValueChange={(value) => {
                               setFeeStructure((prev) => ({
                                 ...prev,
@@ -1116,7 +1333,7 @@ const handleCreateAgreement = (student: Student) => {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="one">
-                                One Installment(5% Discount)
+                                One Installment
                               </SelectItem>
                               <SelectItem value="two">
                                 Two Installments
@@ -1148,7 +1365,9 @@ const handleCreateAgreement = (student: Student) => {
                       </h3>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                        <Label>Academic Year</Label>
+                        <Label className="flex items-center gap-1">
+                          Academic Year <span className="text-red-500">*</span>
+                        </Label>
                         <Select
                           value={selectedAcademicYearId}
                           onValueChange={setSelectedAcademicYearId}
@@ -1297,15 +1516,35 @@ const handleCreateAgreement = (student: Student) => {
                                     Created: {agreement.createdDate}
                                   </p>
                                 </div>
-                                <Button
-                                  onClick={() =>
-                                    handleSendForESignature(agreement)
-                                  }
-                                  className="bg-blue-600 hover:bg-blue-700"
-                                >
-                                  <Send className="mr-2 h-4 w-4" />
-                                  Send for E-Signature
-                                </Button>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      variant="outline"
+                                      onClick={async () => {
+                                        const accessToken = localStorage.getItem("accessToken");
+                                        const response = await fetch(
+                                          `${import.meta.env.VITE_API_BASE_URL}/students/financial-agreement-pdf-download/${agreement.id}/`,
+                                          { headers: { Authorization: `Bearer ${accessToken}` } }
+                                        );
+                                        if (response.ok) {
+                                          const blob = await response.blob();
+                                          const url = window.URL.createObjectURL(blob);
+                                          window.open(url, '_blank');
+                                        }
+                                      }}
+                                    >
+                                      <Eye className="mr-2 h-4 w-4" />
+                                      View PDF
+                                    </Button>
+                                    <Button
+                                      onClick={() =>
+                                        handleSendForESignature(agreement)
+                                      }
+                                      className="bg-blue-600 hover:bg-blue-700"
+                                    >
+                                      <Send className="mr-2 h-4 w-4" />
+                                      Send for E-Signature
+                                    </Button>
+                                  </div>
                               </CardContent>
                             </Card>
                           );
@@ -1348,57 +1587,129 @@ const handleCreateAgreement = (student: Student) => {
                     {getStudent(currentSigningAgreement?.studentId || "")?.name}
                   </h3>
 
-                  {/* Download PDF Button */}
+                  {/* View and Download PDF Buttons */}
+<div className="flex gap-2 mb-4">
+  <Button
+    variant="outline"
+    onClick={async () => {
+      setIsPdfLoading(true);
+      try {
+        if (!currentSigningAgreement?.rawData?.financial_agreement) {
+          throw new Error("No financial agreement data found for this student.");
+        }
+        const agreementToShow = currentSigningAgreement.rawData.financial_agreement.find(
+          (a) => a.is_verified_agreement_pdf === false
+        );
+        if (!agreementToShow) {
+          throw new Error("Could not find an agreement pending signature to show.");
+        }
+        const agreementId = agreementToShow.id;
+        const accessToken = localStorage.getItem("accessToken");
+        const response = await fetch(
+          `${import.meta.env.VITE_API_BASE_URL}/students/financial-agreement-pdf-download/${agreementId}/`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        if (!response.ok) throw new Error("Failed to fetch PDF");
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        window.open(url, '_blank');
+      } catch (error) {
+        console.error("Failed to view PDF:", error);
+        Swal.fire({ title: 'Error', text: error.message, icon: 'error' });
+      } finally {
+        setIsPdfLoading(false);
+      }
+    }}
+    disabled={isPdfLoading}
+  >
+    <Eye className="mr-2 h-4 w-4" />
+    View Agreement PDF
+  </Button>
 
-                  <div>
-                    <Button
-                      onClick={async () => {
-                        if (
-                          !currentSigningAgreement?.rawData?.financial_agreement
-                            ?.id
-                        )
-                          return;
+  <Button
+    onClick={async () => {
+      setIsPdfLoading(true);
 
-                        try {
-                          const accessToken =
-                            localStorage.getItem("accessToken");
-                          const agreementId =
-                            currentSigningAgreement.rawData.financial_agreement
-                              .id;
-                          const response = await fetch(
-                            `${
-                              import.meta.env.VITE_API_BASE_URL
-                            }/students/financial-agreement-pdf-download/${agreementId}/`,
-                            {
-                              headers: {
-                                Authorization: `Bearer ${accessToken}`,
-                              },
-                            }
-                          );
+      try {
+        // --- (Previous validation logic remains the same) ---
+        if (!currentSigningAgreement?.rawData?.financial_agreement) {
+          throw new Error("No financial agreement data found for this student.");
+        }
+        
+        const agreementToShow = currentSigningAgreement.rawData.financial_agreement.find(
+          (a) => a.is_verified_agreement_pdf === false
+        );
 
-                          if (!response.ok)
-                            throw new Error("Failed to download PDF");
+        if (!agreementToShow) {
+          throw new Error("Could not find an agreement pending signature to show.");
+        }
 
-                          const blob = await response.blob();
-                          const url = window.URL.createObjectURL(blob);
-                          const a = document.createElement("a");
-                          a.href = url;
-                          a.download = `agreement_${agreementId}.pdf`;
-                          document.body.appendChild(a);
-                          a.click();
-                          window.URL.revokeObjectURL(url);
-                          a.remove();
-                        } catch (error) {
-                          console.error("Download failed:", error);
-                          alert("Failed to download agreement PDF");
-                        }
-                      }}
-                      className="mb-4"
-                    >
-                      <FileText className="mr-2 h-4 w-4" />
-                      Download Agreement PDF
-                    </Button>
-                  </div>
+        const agreementId = agreementToShow.id;
+        const accessToken = localStorage.getItem("accessToken");
+        
+        // 1. Fetch the PDF from the server
+        const response = await fetch(
+          `${import.meta.env.VITE_API_BASE_URL}/students/financial-agreement-pdf-download/${agreementId}/`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Failed to fetch PDF. Server responded with: ${response.status} ${errorText}`);
+        }
+
+        // 2. Get the PDF data as a Blob
+        const blob = await response.blob();
+        
+        // --- THIS IS THE NEW DOWNLOAD LOGIC ---
+
+        // 3. Create a temporary URL for the Blob
+        const url = window.URL.createObjectURL(blob);
+        
+        // 4. Create a temporary anchor (link) element
+        const a = document.createElement('a');
+        a.style.display = 'none'; // Keep it hidden
+        a.href = url;
+        
+        // 5. Set the download filename
+        const studentName = currentSigningAgreement.rawData.en_first_name || 'student';
+        a.download = `Financial_Agreement_${studentName}.pdf`;
+        
+        // 6. Add the anchor to the page, click it to trigger the download, and then remove it
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url); // Clean up the URL object
+        document.body.removeChild(a); // Clean up the anchor element
+
+      } catch (error) {
+        console.error("Failed to download PDF:", error);
+        Swal.fire({
+          title: 'Error',
+          text: error.message || "Failed to download the agreement PDF.",
+          icon: 'error',
+          timer: 5000,
+          timerProgressBar: true
+        });
+      } finally {
+        setIsPdfLoading(false);
+      }
+    }}
+    className="mb-4"
+    disabled={isPdfLoading}
+  >
+    {isPdfLoading ? (
+      <>
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        Downloading...
+      </>
+    ) : (
+      <>
+        <FileText className="mr-2 h-4 w-4" />
+        Download Agreement PDF
+      </>
+    )}
+  </Button>
+</div>
 
                   {/* Guardian Signature Pad */}
                   <div className="border rounded-lg p-4 mb-6">
@@ -1468,12 +1779,17 @@ const handleCreateAgreement = (student: Student) => {
                           guardianSignaturePad.isEmpty() ||
                           employerSignaturePad.isEmpty()
                         ) {
-                          alert(
-                            "Please provide both guardian and employer signatures"
-                          );
+                          Swal.fire({
+                            title: 'Warning',
+                            text: "Please provide both guardian and employer signatures",
+                            icon: 'warning',
+                            timer: 5000,
+                            timerProgressBar: true
+                          });
                           return;
                         }
 
+                        setProcessingStep("Downloading original contract...");
                         setIsProcessing(true);
 
                         try {
@@ -1506,40 +1822,54 @@ const handleCreateAgreement = (student: Student) => {
                           if (!pdfResponse.ok)
                             throw new Error("Failed to download PDF");
 
+                          setProcessingStep("Preparing signature images...");
                           // 2. Convert signatures to transparent PNG images
+                          // Utility function to convert DataURL to ArrayBuffer without fetch
+                          const dataUrlToArrayBuffer = (dataUrl: string) => {
+                            const base64 = dataUrl.split(',')[1];
+                            const binaryString = window.atob(base64);
+                            const bytes = new Uint8Array(binaryString.length);
+                            for (let i = 0; i < binaryString.length; i++) {
+                              bytes[i] = binaryString.charCodeAt(i);
+                            }
+                            return bytes.buffer;
+                          };
+
                           const convertSignature = (signaturePad) => {
                             const signatureCanvas = signaturePad.getCanvas();
                             const tempCanvas = document.createElement("canvas");
-                            tempCanvas.width = signatureCanvas.width;
-                            tempCanvas.height = signatureCanvas.height;
+                            
+                            // Scale down if too large to optimize PDF size
+                            const maxDim = 800;
+                            let width = signatureCanvas.width;
+                            let height = signatureCanvas.height;
+                            if (width > maxDim || height > maxDim) {
+                              if (width > height) {
+                                height = (height / width) * maxDim;
+                                width = maxDim;
+                              } else {
+                                width = (width / height) * maxDim;
+                                height = maxDim;
+                              }
+                            }
+                            
+                            tempCanvas.width = width;
+                            tempCanvas.height = height;
 
                             const ctx = tempCanvas.getContext("2d");
-                            ctx.clearRect(
-                              0,
-                              0,
-                              tempCanvas.width,
-                              tempCanvas.height
-                            );
-                            ctx.drawImage(signatureCanvas, 0, 0);
+                            ctx.clearRect(0, 0, width, height);
+                            ctx.drawImage(signatureCanvas, 0, 0, width, height);
 
-                            return tempCanvas.toDataURL("image/png");
+                            return tempCanvas.toDataURL("image/png", 0.8);
                           };
 
-                          const guardianSignatureUrl =
-                            convertSignature(guardianSignaturePad);
-                          const employerSignatureUrl =
-                            convertSignature(employerSignaturePad);
+                          const guardianSignatureUrl = convertSignature(guardianSignaturePad);
+                          const employerSignatureUrl = convertSignature(employerSignaturePad);
 
-                          const [guardianPngBytes, employerPngBytes] =
-                            await Promise.all([
-                              fetch(guardianSignatureUrl).then((res) =>
-                                res.arrayBuffer()
-                              ),
-                              fetch(employerSignatureUrl).then((res) =>
-                                res.arrayBuffer()
-                              ),
-                            ]);
+                          const guardianPngBytes = dataUrlToArrayBuffer(guardianSignatureUrl);
+                          const employerPngBytes = dataUrlToArrayBuffer(employerSignatureUrl);
 
+                          setProcessingStep("Attaching signatures to document...");
                           // 3. Load PDF and add transparent signatures
                           const pdfDoc = await PDFDocument.load(
                             await pdfResponse.arrayBuffer()
@@ -1552,41 +1882,38 @@ const handleCreateAgreement = (student: Student) => {
                           );
 
                           const pages = pdfDoc.getPages();
-                          const page = pages[1]; // Second page for signatures
+                          const page = pages[0]; // First (and only) page for signatures
                           const { width, height } = page.getSize();
 
-                          // Draw signatures with transparency preserved
+                          // Guardian (Second Party) on the LEFT side - on توقيع الطرف الثاني/ dotted line
                           page.drawImage(guardianImage, {
-                            x: 50,
-                            y: 180,
-                            width: 120,
-                            height: 50,
+                            x: 5,
+                            y: 92,
+                            width: 180,
+                            height: 55,
                             opacity: 1,
                           });
 
+                          // Employer (First Party) on the RIGHT side - on توقيع الطرف الأول/ dotted line
                           page.drawImage(employerImage, {
-                            x: width - 170,
-                            y: 180,
-                            width: 120,
-                            height: 50,
+                            x: width - 238,
+                            y: 92,
+                            width: 180,
+                            height: 55,
                             opacity: 1,
                           });
 
                           // 4. Save and verify before upload
+                          setProcessingStep("Finalizing PDF...");
                           const signedPdfBytes = await pdfDoc.save();
                           const blob = new Blob([signedPdfBytes], {
                             type: "application/pdf",
                           });
 
-                          // Optional: Preview download (for debugging)
-                          const url = URL.createObjectURL(blob);
-                          const a = document.createElement("a");
-                          a.href = url;
-                          a.download = "signed_agreement_preview.pdf";
-                          a.click();
+                          // Removed auto-download of preview to speed up workflow
 
                           // 5. Upload signed PDF
-                          const pdfname = `FA-${new Date().getFullYear()}-${Math.floor(
+                          setProcessingStep("Uploading signed agreement...");                          const pdfname = `FA-${new Date().getFullYear()}-${Math.floor(
                             Math.random() * 9000 + 1000
                           )}`;
                           const formData = new FormData();
@@ -1631,16 +1958,29 @@ const handleCreateAgreement = (student: Student) => {
                                 : student
                           );
 
-                          setPendingStudents(updatedStudents);
+                          // Refresh data to update Signed Agreements list and metrics
+                          await loadData();
                           setIsSigning(false);
                           setCurrentSigningAgreement(null);
                           guardianSignaturePad.clear();
                           employerSignaturePad.clear();
 
-                          alert("PDF successfully submitted!");
+                          Swal.fire({
+                            title: 'Success',
+                            text: 'PDF successfully submitted!',
+                            icon: 'success',
+                            timer: 5000,
+                            timerProgressBar: true
+                          });
                         } catch (error) {
                           console.error("Error:", error);
-                          alert(`Error: ${error.message}`);
+                          Swal.fire({
+                            title: 'Error',
+                            text: error.message,
+                            icon: 'error',
+                            timer: 5000,
+                            timerProgressBar: true
+                          });
                         } finally {
                           setIsProcessing(false);
                         }

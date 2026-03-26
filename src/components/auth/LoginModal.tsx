@@ -73,6 +73,12 @@ const LoginPage = () => {
     password: "",
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [loginErrors, setLoginErrors] = useState<{
+    email?: string[];
+    password?: string[];
+    non_field_errors?: string[];
+    error?: string;
+  }>({});
   const [refreshTimeout, setRefreshTimeout] = useState<NodeJS.Timeout | null>(null);
 
   // Clean up timeouts when component unmounts
@@ -93,6 +99,7 @@ const LoginPage = () => {
         email: "",
         password: "",
       });
+      setLoginErrors({});
     }
   };
 
@@ -106,6 +113,8 @@ const handleLogin = async (e: React.FormEvent, role: string) => {
     setIsLoading(false);
     return;
   }
+
+  setLoginErrors({});
 
   try {
     const response = await api.post("/accounts/login/", {
@@ -129,19 +138,23 @@ const handleLogin = async (e: React.FormEvent, role: string) => {
     TokenService.scheduleTokenRefresh();
 
     toast.success(`Welcome ${decoded.first_name}!`);
+    setActiveRole(null); // Close modal on success
     redirectBasedOnRole(decoded.role);
 
   } catch (error) {
     console.error("Login error:", error);
     if (axios.isAxiosError(error)) {
-      toast.error(error.response?.data?.detail || "Invalid email or password");
+      const errorData = error.response?.data;
+      if (errorData) {
+        setLoginErrors(errorData);
+      } else {
+        setLoginErrors({ error: "An unexpected error occurred. Please try again." });
+      }
     } else {
-      toast.error(`You are not authorized as a your selected role`);
-      toast.error("Login failed. Please try again.");
+      setLoginErrors({ error: "Login failed. Please try again." });
     }
   } finally {
     setIsLoading(false);
-    setActiveRole(null);
   }
 };
 
@@ -262,7 +275,10 @@ const handleLogin = async (e: React.FormEvent, role: string) => {
                 variant="ghost"
                 size="sm"
                 className="absolute top-2 right-2 p-1 h-8 w-8"
-                onClick={() => setActiveRole(null)}
+                onClick={() => {
+                  setActiveRole(null);
+                  setLoginErrors({});
+                }}
                 aria-label="Close modal"
               >
                 <X className="h-4 w-4" />
@@ -280,6 +296,14 @@ const handleLogin = async (e: React.FormEvent, role: string) => {
                   onSubmit={(e) => handleLogin(e, activeRole)}
                   className="space-y-4"
                 >
+                  {loginErrors.non_field_errors && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md text-sm">
+                      {loginErrors.non_field_errors.map((err, i) => (
+                        <p key={i}>{err}</p>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <Label htmlFor="email" className="flex items-center gap-2">
                       <User className="h-4 w-4" />
@@ -296,8 +320,11 @@ const handleLogin = async (e: React.FormEvent, role: string) => {
                           email: e.target.value,
                         })
                       }
-                      className="h-12"
+                      className={`h-12 ${loginErrors.email ? 'border-red-500' : ''}`}
                     />
+                    {loginErrors.email && (
+                      <p className="text-red-500 text-xs mt-1">{loginErrors.email[0]}</p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -316,8 +343,11 @@ const handleLogin = async (e: React.FormEvent, role: string) => {
                           password: e.target.value,
                         })
                       }
-                      className="h-12"
+                      className={`h-12 ${loginErrors.password ? 'border-red-500' : ''}`}
                     />
+                    {loginErrors.password && (
+                      <p className="text-red-500 text-xs mt-1">{loginErrors.password[0]}</p>
+                    )}
                   </div>
 
                   <Button

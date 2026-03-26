@@ -90,7 +90,7 @@ const StudentListDashboard = () => {
             <div>
               <Label>Search Student | البحث عن طالب</Label>
               <Input
-                placeholder="Name or Student ID"
+                placeholder="Name or Admission Number"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -154,7 +154,7 @@ const StudentListDashboard = () => {
             <table className="w-full border-collapse border border-gray-300">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="border border-gray-300 px-4 py-3 text-left">Student ID | رقم الطالب</th>
+                  <th className="border border-gray-300 px-4 py-3 text-left">Admission Number | رقم القبول</th>
                   <th className="border border-gray-300 px-4 py-3 text-left">Student Name | اسم الطالب</th>
                   <th className="border border-gray-300 px-4 py-3 text-left">Class | الصف</th>
                   <th className="border border-gray-300 px-4 py-3 text-left">Section | الشعبة</th>

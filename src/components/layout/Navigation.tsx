@@ -6,8 +6,12 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { LayoutDashboard, LogOut as LogOutIcon, User as UserIcon, Settings } from "lucide-react";
 
 interface UserData {
   first_name: string;
@@ -134,23 +138,43 @@ const Navigation = () => {
               <div className="flex items-center space-x-4">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="flex items-center space-x-2">
-                      <User className="h-4 w-4" />
-                      <span>{userData?.first_name || "Account"}</span>
+                    <Button variant="ghost" className="relative h-10 w-10 rounded-full ring-2 ring-[rgb(102,42,20)]/10 hover:ring-[rgb(102,42,20)]/30 transition-all p-0 overflow-hidden">
+                      <Avatar className="h-full w-full">
+                        <AvatarFallback className="bg-[rgb(102,42,20)] text-white text-xs font-bold">
+                          {userData?.first_name?.charAt(0)}{userData?.last_name?.charAt(0)}
+                        </AvatarFallback>
+                      </Avatar>
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
+                  <DropdownMenuContent className="w-64 mt-2 p-2" align="end">
+                    <DropdownMenuLabel className="font-normal p-2">
+                      <div className="flex flex-col space-y-1">
+                        <p className="text-sm font-semibold leading-none text-gray-900">
+                          {userData?.first_name} {userData?.last_name}
+                        </p>
+                        <p className="text-xs leading-none text-gray-500 italic">
+                          {userData?.role}
+                        </p>
+                        <p className="text-[10px] leading-none text-gray-400 mt-1">
+                          {userData?.email}
+                        </p>
+                      </div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={handleDashboard}
-                      className="cursor-pointer"
+                      className="cursor-pointer py-2.5 rounded-md hover:bg-gray-50 focus:bg-gray-50 group"
                     >
-                      {language === "en" ? "Dashboard" : "لوحة التحكم"}
+                      <LayoutDashboard className="h-4 w-4 mr-3 text-gray-500 group-hover:text-[rgb(102,42,20)] transition-colors" />
+                      <span className="font-medium">{language === "en" ? "Dashboard" : "لوحة التحكم"}</span>
                     </DropdownMenuItem>
+                    <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={handleSignOut}
-                      className="cursor-pointer text-red-600"
+                      className="cursor-pointer py-2.5 rounded-md text-red-600 hover:bg-red-50 focus:bg-red-50 focus:text-red-600 group"
                     >
-                      {language === "en" ? "Sign Out" : "تسجيل خروج"}
+                      <LogOutIcon className="h-4 w-4 mr-3 text-red-500 group-hover:text-red-600 transition-colors" />
+                      <span className="font-bold">{language === "en" ? "Sign Out" : "تسجيل خروج"}</span>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -184,17 +208,17 @@ const Navigation = () => {
             <div className="flex flex-col space-y-4 pt-4">
               {navItems.map((item) => (
                 <Link
-                  style={{ backgroundColor: "rgb(102,42,20)", color: "white" }}
                   key={item.href}
                   to={item.href}
-                  className={`transition-colors duration-200 font-medium px-2 py-1 ${
+                  className={`transition-all duration-200 font-bold px-4 py-3 rounded-lg flex items-center justify-between ${
                     isActive(item.href)
-                      ? "text-[rgb(102,42,20)]"
-                      : "text-gray-700 hover:text-[rgb(102,42,20)]"
+                      ? "bg-[rgb(102,42,20)] text-white shadow-md"
+                      : "text-gray-700 hover:bg-gray-100"
                   }`}
                   onClick={() => setIsMenuOpen(false)}
                 >
-                  {language === "en" ? item.label : item.labelAr}
+                  <span>{language === "en" ? item.label : item.labelAr}</span>
+                  {isActive(item.href) && <div className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />}
                 </Link>
               ))}
               <div className="flex items-center justify-between pt-4 border-t border-gray-200">
@@ -209,26 +233,41 @@ const Navigation = () => {
                 </Button>
                 
                 {isLoggedIn ? (
-                  <div className="flex space-x-2">
-                    <Button
-                      onClick={() => {
-                        handleDashboard();
-                        setIsMenuOpen(false);
-                      }}
-                      className="bg-[#79361C] hover:bg-[#662A14] text-white"
-                    >
-                      {language === "en" ? "Dashboard" : "لوحة التحكم"}
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        handleSignOut();
-                        setIsMenuOpen(false);
-                      }}
-                      variant="outline"
-                      className="text-[#79361C] hover:bg-[#f3e9e5] border-[#79361C]"
-                    >
-                      {language === "en" ? "Sign Out" : "تسجيل خروج"}
-                    </Button>
+                  <div className="flex flex-col space-y-3 w-full">
+                    <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                      <Avatar className="h-10 w-10 ring-2 ring-[rgb(102,42,20)]/20">
+                        <AvatarFallback className="bg-[rgb(102,42,20)] text-white text-xs font-bold">
+                          {userData?.first_name?.charAt(0)}{userData?.last_name?.charAt(0)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-gray-900">{userData?.first_name} {userData?.last_name}</span>
+                        <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">{userData?.role}</span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Button
+                        onClick={() => {
+                          handleDashboard();
+                          setIsMenuOpen(false);
+                        }}
+                        className="bg-[rgb(102,42,20)] hover:bg-[rgb(80,30,15)] text-white font-bold h-11"
+                      >
+                        <LayoutDashboard className="h-4 w-4 mr-2" />
+                        {language === "en" ? "Dashboard" : "لوحة التحكم"}
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          handleSignOut();
+                          setIsMenuOpen(false);
+                        }}
+                        variant="outline"
+                        className="text-red-600 hover:bg-red-50 border-red-200 font-bold h-11"
+                      >
+                        <LogOutIcon className="h-4 w-4 mr-2" />
+                        {language === "en" ? "Sign Out" : "خروج"}
+                      </Button>
+                    </div>
                   </div>
                 ) : (
                   <Button
