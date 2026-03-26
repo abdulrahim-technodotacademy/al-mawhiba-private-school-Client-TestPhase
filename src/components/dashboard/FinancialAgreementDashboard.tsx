@@ -28,6 +28,7 @@ import React, { useEffect, useState } from "react";
 import SignaturePad from "react-signature-canvas";
 import { PDFDocument } from "pdf-lib";
 import Swal from "sweetalert2";
+import { getFullUrl } from "@/utils/fileUtils";
 
 interface Department {
   id: string;
@@ -2121,7 +2122,7 @@ const handleCreateAgreement = (student: Student) => {
                                     <Button
                                       variant="outline"
                                       onClick={() => {
-                                        const pdfUrl = `${import.meta.env.VITE_DOMAIN}${student.financial_agreement.agreement_pdf}`;
+                                        const pdfUrl = getFullUrl(student.financial_agreement.agreement_pdf);
                                         window.open(
                                           pdfUrl,
                                           "_blank",

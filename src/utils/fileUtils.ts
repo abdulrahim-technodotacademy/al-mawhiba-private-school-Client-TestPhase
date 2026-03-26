@@ -10,13 +10,8 @@ export const getFullUrl = (fileUrl: any): string => {
   // Extract path and query from absolute URLs to handle them correctly
   let path = fileUrl;
   if (fileUrl.startsWith('http')) {
-    try {
-      const urlObj = new URL(fileUrl);
-      path = urlObj.pathname + urlObj.search;
-    } catch (e) {
-      // Fallback to original string if URL parsing fails
-      return fileUrl;
-    }
+    // If it's already an absolute URL, return it as is to avoid prepending a domain again
+    return fileUrl;
   }
   
   const cleanPath = path.startsWith('/') ? path : '/' + path;
