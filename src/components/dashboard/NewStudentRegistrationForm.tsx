@@ -679,95 +679,7 @@ const NewStudentRegistrationForm = () => {
     }
   }, [formData.date_of_birth]);
 
-  const fillDummyData = () => {
-    setFormData({
-      ...formData,
-      en_first_name: "John",
-      en_middle_name: "Doe",
-      en_last_name: "Smith",
-      ar_first_name: "جون",
-      ar_middle_name: "دو",
-      ar_last_name: "سميث",
-      en_grandfather_name: "Robert",
-      ar_grandfather_name: "روبرت",
-      student_email: "student@example.com",
-      date_of_birth: "2015-05-15",
-      gender: "M",
-      religion: "Islam",
-      nationality: "Oman",
-      student_address: "Muscat, Oman",
-      city: "Muscat",
-      state: "Muscat",
-      postal_code: "100",
-      country: "Oman",
-      governance: "Muscat",
-      neighborhood: "Al Seeb",
-      street_number: "123",
-      house_number: "45",
-      previous_education_system: "Omani Curriculum",
-      wanted_education_system: "Omani Curriculum",
-      staying_with: "Parents",
-      home_contact: "98765432",
-      emergency_contact: "91112222",
-      google_map_location_url: "https://maps.google.com/?q=23.5859,58.4059",
-      admission_number: `AMPS-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
-      previous_school: "International School",
-      relationship: "relative",
-      father: {
-        national_id: "12345678",
-        name_en: "John Senior",
-        name_ar: "جون سينيور",
-        phone: "+96898765432",
-        mobile: "+96898887776",
-        email: "father@example.com",
-        work_phone: "+96824000000",
-        workplace: "PDO",
-        occupation: "Engineer",
-        passport_number: "P1234567",
-        id_document: null,
-        address: "Muscat, Oman",
-        is_directly_responsible: false,
-      },
-      mother: {
-        national_id: "87654321",
-        name_en: "Jane Smith",
-        name_ar: "جين سميث",
-        phone: "+96899887766",
-        mobile: "+96899776655",
-        email: "mother@example.com",
-        work_phone: "+96824111111",
-        workplace: "Ministry of Education",
-        occupation: "Teacher",
-        passport_number: "P7654321",
-        id_document: null,
-        address: "Muscat, Oman",
-        is_directly_responsible: false,
-      },
-      relative: {
-        national_id: "55443322",
-        name_en: "Uncle Bob",
-        name_ar: "العم بوب",
-        phone: "+96895554443",
-        mobile: "+96894443332",
-        email: "relative@example.com",
-        work_phone: "+96824998877",
-        workplace: "Private Sector",
-        occupation: "Manager",
-        passport_number: "P5566778",
-        id_document: null,
-        address: "Muscat, Oman",
-        is_directly_responsible: true,
-      },
-    });
-    Swal.fire({
-      title: 'Success!',
-      text: 'Dummy data filled | تم تعبئة البيانات الوهمية',
-      icon: 'success',
-      timer: 5000,
-      timerProgressBar: true,
-      confirmButtonText: 'OK'
-    });
-  };
+
 
   return (
     <>
@@ -782,14 +694,7 @@ const NewStudentRegistrationForm = () => {
               <h1 className="text-3xl font-bold mb-2">Student Registration | تسجيل طالب</h1>
               <p className="text-[#662a14]/60 font-medium">Please fill in the information below to register | يرجى تعبئة المعلومات أدناه للتسجيل</p>
             </div>
-            <Button
-              type="button"
-              onClick={fillDummyData}
-              variant="outline"
-              className="bg-white/10 hover:bg-white/20 border-white/20 text-white"
-            >
-              Fill Dummy Data
-            </Button>
+
           </div>
 
           <div className="p-10">
@@ -1081,7 +986,7 @@ const NewStudentRegistrationForm = () => {
                 );
 
                 // Determine which forms to show based on relationship
-                const formsToShow: Array<{ config: typeof guardianConfigs.father; isResponsible: boolean }> = [];
+                const formsToShow: Array<{ config: any; isResponsible: boolean }> = [];
 
                 if (formData.relationship === 'father') {
                   formsToShow.push({ config: guardianConfigs.father, isResponsible: true });

@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UserPlus, User, Upload, Save, Trash2, Database, FileText } from "lucide-react";
+import { UserPlus, User, Upload, Save, Trash2, FileText } from "lucide-react";
 import FullPageLoader from "./FullPageLoader";
 
 const DOCUMENT_TYPES = [
@@ -606,87 +606,7 @@ function NewRegistrationForPublic() {
     });
   };
 
-  const handleFillDummyData = () => {
-    const dummyData = {
-      ...formData,
-      en_first_name: "Naveen",
-      en_middle_name: "p",
-      en_last_name: "anil",
-      ar_first_name: "جون",
-      ar_middle_name: "آدم",
-      ar_last_name: "دو",
-      en_father_name: "Adam Doe",
-      ar_father_name: "آدم دو",
-      en_grandfather_name: "Robert Doe",
-      ar_grandfather_name: "روبرت دو",
-      student_email: "john.doe@example.com",
-      student_address: "123 School Lane",
-      date_of_birth: "2015-05-20",
-      gender: "M",
-      religion: "Islam",
-      nationality: "Omani",
-      city: "Muscat",
-      state: "Muscat",
-      postal_code: "123",
-      country: "Oman",
-      relationship: "relative",
-      father: {
-        national_id: "123456789",
-        name_en: "Adam Doe",
-        name_ar: "آدم دو",
-        phone: "+96887654321",
-        mobile: "+96898887776",
-        email: "father@example.com",
-        work_phone: "+96811223344",
-        workplace: "Tech Corp",
-        occupation: "Engineer",
-        passport_number: "P1234567",
-        id_document: null,
-        address: "123 School Lane",
-        is_directly_responsible: false,
-      },
-      mother: {
-        national_id: "987654321",
-        name_en: "Sarah Smith",
-        name_ar: "سارة سميث",
-        phone: "+96899887766",
-        mobile: "+96899776655",
-        email: "mother@example.com",
-        work_phone: "+96811445566",
-        workplace: "Hospital",
-        occupation: "Doctor",
-        passport_number: "P7654321",
-        id_document: null,
-        address: "123 School Lane",
-        is_directly_responsible: false,
-      },
-      relative: {
-        national_id: "55443322",
-        name_en: "Uncle Bob",
-        name_ar: "العم بوب",
-        phone: "+96895554443",
-        mobile: "+96894443332",
-        email: "relative@example.com",
-        work_phone: "+96824998877",
-        workplace: "Private Sector",
-        occupation: "Manager",
-        passport_number: "P5566778",
-        id_document: null,
-        address: "Muscat, Oman",
-        is_directly_responsible: true,
-      },
-    };
-    setFormData(dummyData);
 
-    Swal.fire({
-      title: 'Success!',
-      text: 'Form filled with dummy data (Relative selected)',
-      icon: 'success',
-      timer: 2000,
-      timerProgressBar: true,
-      confirmButtonText: 'OK'
-    });
-  };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -763,16 +683,7 @@ function NewRegistrationForPublic() {
             <UserPlus className="h-5 w-5" />
             New Student Registration | تسجيل طالب جديد
           </CardTitle>
-          <Button
-            type="button"
-            onClick={handleFillDummyData}
-            variant="outline"
-            size="sm"
-            className="flex items-center gap-2"
-          >
-            <Database className="h-4 w-4" />
-            Fill Dummy Data
-          </Button>
+
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-14">
