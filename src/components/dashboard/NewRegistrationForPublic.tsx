@@ -55,6 +55,8 @@ function NewRegistrationForPublic() {
   const [isLoading, setIsLoading] = useState({
     departments: false,
   });
+  const [formKey, setFormKey] = useState(0);
+  const [docKey, setDocKey] = useState(0);
 
   const emptyGuardian = {
     national_id: "",
@@ -551,6 +553,12 @@ function NewRegistrationForPublic() {
         student_documents: [],
         admission_class: "",
       });
+      setCurrentDocument({
+        type: "",
+        file: null as File | null,
+        document_name: "",
+      });
+      setFormKey(prev => prev + 1);
     } catch (error) {
       console.error("Registration error:", error);
       Swal.fire({
@@ -566,23 +574,27 @@ function NewRegistrationForPublic() {
     }
   };
 
-  const handleFileUpload = () => {
-    if (!currentDocument.type || !currentDocument.file) {
-      Swal.fire({
-        title: 'Error!',
-        text: 'Please select document type and upload a file',
-        icon: 'error',
-        timer: 5000,
-        timerProgressBar: true,
-        confirmButtonText: 'OK'
-      });
+  const handleFileUpload = (incomingFile?: File) => {
+    const fileToUpload = incomingFile || currentDocument.file;
+
+    if (!currentDocument.type || !fileToUpload) {
+      if (!currentDocument.type && fileToUpload) {
+        Swal.fire({
+          title: 'Requirement | مطلوب',
+          text: 'Please select document type first | يرجى اختيار نوع الوثيقة أولاً',
+          icon: 'warning',
+          timer: 3000,
+          timerProgressBar: true,
+          confirmButtonText: 'OK'
+        });
+      }
       return;
     }
 
     const newDocument = {
       document_type: currentDocument.type,
-      file: currentDocument.file, // Raw File object
-      description: currentDocument.type === "OTHER" ? currentDocument.document_name : (currentDocument.file.name || ""),
+      file: fileToUpload, // Raw File object
+      description: currentDocument.type === "OTHER" ? currentDocument.document_name : (fileToUpload.name || ""),
     };
 
     setFormData((prev) => ({
@@ -596,14 +608,7 @@ function NewRegistrationForPublic() {
       document_name: "",
     });
 
-    Swal.fire({
-      title: 'Success!',
-      text: 'Document uploaded successfully',
-      icon: 'success',
-      timer: 5000,
-      timerProgressBar: true,
-      confirmButtonText: 'OK'
-    });
+    setDocKey((prev) => prev + 1);
   };
 
 
@@ -686,7 +691,7 @@ function NewRegistrationForPublic() {
 
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-14">
+          <form key={formKey} onSubmit={handleSubmit} className="space-y-14">
             {/* Responsible Person Selection Block */}
             <div className="space-y-8 bg-primary/5 p-6 rounded-2xl border border-primary/20 shadow-sm">
               <div className="text-center space-y-6">
@@ -1737,7 +1742,7 @@ function NewRegistrationForPublic() {
               )}
 
               {/* Document Upload Form */}
-              <div className="space-y-4">
+              <div key={docKey} className="space-y-4">
                 <div className="grid md:grid-cols-2 gap-4">
                   {/* Document Type */}
                   <div>
@@ -1791,27 +1796,19 @@ function NewRegistrationForPublic() {
                         id="document_file"
                         type="file"
                         accept=".pdf,.jpg,.jpeg,.png"
-                        onChange={(e) =>
-                          setCurrentDocument({
-                            ...currentDocument,
-                            file: e.target.files?.[0] || null,
-                          })
-                        }
+                         onChange={(e) => {
+                             const file = e.target.files?.[0] || null;
+                             if (file) {
+                               handleFileUpload(file);
+                             }
+                           }}
                       />
                       <Upload className="h-4 w-4 text-gray-400" />
                     </div>
                   </div>
                 </div>
 
-                <Button
-                  type="button"
-                  onClick={handleFileUpload}
-                  variant="outline"
-                  className="w-full"
-                  disabled={!currentDocument.type || !currentDocument.file}
-                >
-                  Add Document | إضافة وثيقة
-                </Button>
+
               </div>
             </div>
 
