@@ -14,14 +14,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UserPlus, User, Upload, Save, Trash2 } from "lucide-react";
+import { UserPlus, User, Upload, Save, Trash2, Database, FileText } from "lucide-react";
 import FullPageLoader from "./FullPageLoader";
 
 const DOCUMENT_TYPES = [
+  { value: "ID", label: "ID Proof | بطاقة الهوية" },
   { value: "BIRTH", label: "Birth Certificate | شهادة الميلاد" },
   { value: "TRANSFER", label: "Transfer Certificate | شهادة النقل" },
   { value: "PHOTO", label: "Photograph | صورة شخصية" },
-  { value: "ID", label: "ID Proof | بطاقة الهوية" },
   { value: "GUARDIAN_ID", label: "Guardian ID Document | وثيقة هوية الوصي" },
   { value: "OTHER", label: "Other | أخرى" },
 ];
@@ -52,20 +52,28 @@ function NewRegistrationForPublic() {
     }>
   >([]);
 
-  const [sections, setSections] = useState<
-    Array<{
-      id: string;
-      name: string;
-    }>
-  >([]);
-
   const [isLoading, setIsLoading] = useState({
     departments: false,
   });
 
+  const emptyGuardian = {
+    national_id: "",
+    name_en: "",
+    name_ar: "",
+    phone: "",
+    mobile: "",
+    email: "",
+    work_phone: "",
+    workplace: "",
+    occupation: "",
+    passport_number: "",
+    id_document: null as File | null,
+    address: "",
+    is_directly_responsible: false,
+  };
+
   const [formData, setFormData] = useState({
     // Student Information
-    admission_number: "",
     en_first_name: "",
     en_middle_name: "",
     en_last_name: "",
@@ -74,12 +82,8 @@ function NewRegistrationForPublic() {
     ar_last_name: "",
 
     // Family Names
-    en_father_name: "",
-    ar_father_name: "",
     en_grandfather_name: "",
     ar_grandfather_name: "",
-    en_tribe_name: "",
-    ar_tribe_name: "",
 
     photo: null as File | null,
     passport_copy: null as File | null,
@@ -88,7 +92,6 @@ function NewRegistrationForPublic() {
     google_map_location_url: "",
 
     student_email: "",
-    student_phone: "",
     student_address: "",
     date_of_birth: "",
     gender: "",
@@ -105,6 +108,7 @@ function NewRegistrationForPublic() {
 
     section: "",
     previous_school: "",
+    relationship: "",
 
     // Education System
     previous_education_system: "",
@@ -118,20 +122,10 @@ function NewRegistrationForPublic() {
     home_contact: "",
     emergency_contact: "",
 
-    // Guardian Information
-    name_en: "",
-    name_ar: "",
-    phone: "",
-    email: "",
-    address: "",
-    relationship: "",
-    national_id: "",
-    passport_number: "",
-    work_phone: "",
-    mobile: "",
-    occupation: "",
-    workplace: "",
-    guardian_id_document: null as File | null,
+    // Multi-guardian data
+    father: { ...emptyGuardian },
+    mother: { ...emptyGuardian },
+    relative: { ...emptyGuardian },
 
     // Documents
     student_documents: [] as Array<{
@@ -139,6 +133,7 @@ function NewRegistrationForPublic() {
       file: File;
       description: string;
     }>,
+    admission_class: "",
   });
 
   const [currentDocument, setCurrentDocument] = useState({
@@ -155,7 +150,6 @@ function NewRegistrationForPublic() {
   const fetchDepartments = async () => {
     setIsLoading((prev) => ({ ...prev, departments: true }));
     try {
-      const accessToken = localStorage.getItem("accessToken");
       const response = await fetch(
         `${import.meta.env.VITE_API_BASE_URL}/students/department/`
       );
@@ -181,7 +175,6 @@ function NewRegistrationForPublic() {
     setFormData({
       ...formData,
       admission_class: departmentId,
-      section: "", // Reset section
     });
   };
 
@@ -189,7 +182,7 @@ function NewRegistrationForPublic() {
     fetchDepartments();
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent, isDraft: boolean = false) => {
     e.preventDefault();
     setIsSubmitting(true);
     setErrors({}); // Clear previous errors
@@ -206,119 +199,104 @@ function NewRegistrationForPublic() {
 
     const newErrors: Record<string, string> = {};
 
-    // Validate Required Fields
-    if (!formData.en_first_name) newErrors.en_first_name = "First name is required | الاسم الأول مطلوب";
-    if (!formData.ar_first_name) newErrors.ar_first_name = "Arabic first name is required | الاسم الأول بالعربي مطلوب";
-    if (!formData.date_of_birth) newErrors.date_of_birth = "Date of birth is required | تاريخ الميلاد مطلوب";
-    if (!formData.student_phone) newErrors.student_phone = "Phone is required | الهاتف مطلوب";
-    if (!formData.gender) newErrors.gender = "Gender is required | الجنس مطلوب";
-    if (!formData.nationality) newErrors.nationality = "Nationality is required | الجنسية مطلوبة";
-    if (!formData.student_address) newErrors.student_address = "Address is required | العنوان مطلوب";
-    if (!formData.city) newErrors.city = "City is required | المدينة مطلوبة";
-    if (!formData.state) newErrors.state = "State is required | المحافظة مطلوبة";
-    if (!formData.postal_code) newErrors.postal_code = "Postal code is required | الرمز البريدي مطلوب";
-    if (!formData.governance) newErrors.governance = "Governance is required | المحافظة مطلوبة";
-    if (!formData.neighborhood) newErrors.neighborhood = "Neighborhood is required | الحي مطلوب";
-    if (!formData.national_id) newErrors.national_id = "Guardian ID Number is required | الرقم المدني مطلوب";
-    if (!formData.name_en) newErrors.name_en = "Guardian name (EN) is required | اسم الجارديان (EN) مطلوب";
-    if (!formData.phone) newErrors.phone = "Guardian phone is required | هاتف الجارديان مطلوب";
-    if (!formData.email) newErrors.email = "Guardian email is required | بريد الجارديان مطلوب";
-    if (!formData.relationship) newErrors.relationship = "Relationship is required | العلاقة مطلوبة";
-    if (!formData.passport_number) newErrors.passport_number = "Passport number is required | رقم الجواز مطلوب";
-    if (!formData.guardian_id_document) newErrors.guardian_id_document = "ID Document is required | وثيقة الهوية مطلوبة";
-    if (!formData.work_phone) newErrors.work_phone = "Work phone is required | هاتف العمل مطلوب";
-    if (!formData.workplace) newErrors.workplace = "Workplace is required | جهة العمل مطلوبة";
-    if (!formData.occupation) newErrors.occupation = "Occupation is required | الوظيفة مطلوبة";
-    if (!formData.address) newErrors.address = "Guardian address is required | عنوان الجارديان مطلوب";
-    if (!formData.country) newErrors.country = "Country is required | الدولة مطلوبة";
-    if (!formData.admission_class) newErrors.admission_class = "Admission class is required | الصف الدراسي مطلوب";
+    if (!isDraft) {
+      // Validate Required Fields
+      if (!formData.en_first_name) newErrors.en_first_name = "First name is required | الاسم الأول مطلوب";
+      if (!formData.ar_first_name) newErrors.ar_first_name = "Arabic first name is required | الاسم الأول بالعربي مطلوب";
+      if (!formData.date_of_birth) newErrors.date_of_birth = "Date of birth is required | تاريخ الميلاد مطلوب";
+      if (!formData.gender) newErrors.gender = "Gender is required | الجنس مطلوب";
+      if (!formData.nationality) newErrors.nationality = "Nationality is required | الجنسية مطلوبة";
+      if (!formData.student_address) newErrors.student_address = "Address is required | العنوان مطلوب";
+      if (!formData.city) newErrors.city = "City is required | المدينة مطلوبة";
+      if (!formData.state) newErrors.state = "State is required | المحافظة مطلوبة";
+      if (!formData.postal_code) newErrors.postal_code = "Postal code is required | الرمز البريدي مطلوب";
+      if (!formData.governance) newErrors.governance = "Governance is required | المحافظة مطلوبة";
+      if (!formData.neighborhood) newErrors.neighborhood = "Neighborhood is required | الحي مطلوب";
+      if (!formData.relationship) newErrors.relationship = "Relationship is required | العلاقة مطلوبة";
+      if (!formData.country) newErrors.country = "Country is required | الدولة مطلوبة";
+      if (!formData.admission_class) newErrors.admission_class = "Admission Class (Department) is required | المرحلة الدراسية مطلوبة";
 
-    // File validations
-    if (!formData.photo) newErrors.photo = "Student photo is required | صورة الطالب مطلوبة";
-    if (!formData.passport_copy) newErrors.passport_copy = "Passport copy is required | نسخة الجواز مطلوبة";
-    const hasIDProof = finalDocuments.some(doc => doc.document_type === "ID");
-    if (!hasIDProof) newErrors.id_proof = "Student ID Proof is required in documents | بطاقة هوية الطالب مطلوبة في المرفقات";
-    if (finalDocuments.length === 0) newErrors.student_documents = "At least one document is required | يجب تحميل وثيقة واحدة على الأقل";
+      // Validate Father details (always required)
+      if (!formData.father.name_en) newErrors.father_name_en = "Father name (EN) is required | اسم الأب مطلوب";
+      if (!formData.father.phone) newErrors.father_phone = "Father phone is required | هاتف الأب مطلوب";
+      if (!formData.father.national_id) newErrors.father_national_id = "Father ID Number is required | الرقم المدني للأب مطلوب";
+      if (!formData.father.id_document) newErrors.father_id_document = "Father ID Document is required | وثيقة هوية الأب مطلوبة";
 
-    // Birthday validation: reject today or future dates
-    if (formData.date_of_birth) {
-      const dob = new Date(formData.date_of_birth);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (dob >= today) {
-        newErrors.date_of_birth = "Date of Birth must be in the past | تاريخ الميلاد يجب أن يكون في الماضي";
+      // Validate Mother details (always required)
+      if (!formData.mother.name_en) newErrors.mother_name_en = "Mother name (EN) is required | اسم الأم مطلوب";
+      if (!formData.mother.phone) newErrors.mother_phone = "Mother phone is required | هاتف الأم مطلوب";
+      if (!formData.mother.national_id) newErrors.mother_national_id = "Mother ID Number is required | الرقم المدني للأم مطلوب";
+      if (!formData.mother.id_document) newErrors.mother_id_document = "Mother ID Document is required | وثيقة هوية الأم مطلوبة";
+
+      // Validate Relative details (only if relative selected)
+      if (formData.relationship === 'relative') {
+        if (!formData.relative.name_en) newErrors.relative_name_en = "Relative name (EN) is required | اسم القريب مطلوب";
+        if (!formData.relative.phone) newErrors.relative_phone = "Relative phone is required | هاتف القريب مطلوب";
+        if (!formData.relative.national_id) newErrors.relative_national_id = "Relative ID Number is required | الرقم المدني للقريب مطلوب";
+        if (!formData.relative.id_document) newErrors.relative_id_document = "Relative ID Document is required | وثيقة هوية القريب مطلوبة";
       }
+
+      // File validations
+      if (!formData.photo) newErrors.photo = "Student photo is required | صورة الطالب مطلوبة";
+      if (!formData.passport_copy) newErrors.passport_copy = "Passport copy is required | نسخة الجواز مطلوبة";
+      const hasIDProof = finalDocuments.some(doc => doc.document_type === "ID");
+      if (!hasIDProof) newErrors.id_proof = "Student ID Proof is required in documents | بطاقة هوية الطالب مطلوبة في المرفقات";
+      if (finalDocuments.length === 0) newErrors.student_documents = "At least one document is required | يجب تحميل وثيقة واحدة على الأقل";
+
+      // Birthday validation: reject today or future dates
+      if (formData.date_of_birth) {
+        const dob = new Date(formData.date_of_birth);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (dob >= today) {
+          newErrors.date_of_birth = "Date of Birth must be in the past | تاريخ الميلاد يجب أن يكون في الماضي";
+        }
+      }
+    } else {
+      // For drafts, we only require the English first name at minimum 
+      if (!formData.en_first_name) newErrors.en_first_name = "English naming is required to save a draft | الاسم بالإنجليزي مطلوب لحفظ المسودة";
     }
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
-      const firstErrorField = Object.keys(newErrors)[0];
-      const fieldLabels: Record<string, string> = {
-        en_first_name: "First Name",
-        ar_first_name: "Arabic First Name",
-        date_of_birth: "Date of Birth",
-        student_phone: "Phone",
-        gender: "Gender",
-        nationality: "Nationality",
-        student_address: "Address",
-        city: "City",
-        state: "State",
-        postal_code: "Postal Code",
-        governance: "Governance",
-        neighborhood: "Neighborhood",
-        national_id: "Guardian ID Number",
-        name_en: "Guardian Name (EN)",
-        phone: "Guardian Phone",
-        email: "Guardian Email",
-        relationship: "Relationship",
-        passport_number: "Passport Number",
-        guardian_id_document: "ID Document",
-        work_phone: "Work Phone",
-        workplace: "Workplace",
-        occupation: "Occupation",
-        address: "Guardian Address",
-        country: "Country",
-        admission_class: "Admission Class",
-        photo: "Student Photo",
-        passport_copy: "Passport Copy",
-        id_proof: "Student ID Proof",
-        student_documents: "Documents"
-      };
-
-      const missingFields = Object.keys(newErrors)
-        .map(key => fieldLabels[key] || key)
-        .join(", ");
-
       setIsSubmitting(false);
 
       // Scroll to the first error
-      const firstErrorElement = document.getElementById(firstErrorField);
-      if (firstErrorElement) {
-        firstErrorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        firstErrorElement.focus();
-      }
+      setTimeout(() => {
+        const firstErrorField = Object.keys(newErrors)[0];
+        const firstErrorElement = document.getElementById(firstErrorField);
+        if (firstErrorElement) {
+          firstErrorElement.scrollIntoView({ behavior: "smooth", block: "center" });
+          firstErrorElement.focus();
+        }
+      }, 100);
       return;
     }
 
     try {
-      // 1. Build JSON objects
-      const guardian = {
-        name_en: formData.name_en,
-        name_ar: formData.name_ar,
-        phone: formData.phone,
-        email: formData.email,
-        address: formData.address,
-        relationship: formData.relationship,
-        national_id: formData.national_id,
-        passport_number: formData.passport_number,
-        work_phone: formData.work_phone,
-        mobile: formData.mobile,
-        occupation: formData.occupation,
-        workplace: formData.workplace,
-      };
+      // Helper to build guardian JSON
+      const buildGuardianData = (g: typeof formData.father) => ({
+        name_en: g.name_en,
+        name_ar: g.name_ar,
+        email: g.email,
+        phone1: g.phone,
+        phone2: g.mobile,
+        address: g.address,
+        work_phone: g.work_phone,
+        occupation: g.occupation,
+        workplace: g.workplace,
+        is_directly_responsible: g.is_directly_responsible,
+        other_datas: {
+          national_id: g.national_id,
+          passport_number: g.passport_number,
+        },
+      });
+
+      const fatherPayload = buildGuardianData(formData.father);
+      const motherPayload = buildGuardianData(formData.mother);
+      const relativePayload = formData.relationship === 'relative' ? buildGuardianData(formData.relative) : {};
 
       const student = {
-        admission_number: formData.admission_number,
         en_first_name: formData.en_first_name,
         en_middle_name: formData.en_middle_name,
         en_last_name: formData.en_last_name,
@@ -326,16 +304,11 @@ function NewRegistrationForPublic() {
         ar_middle_name: formData.ar_middle_name,
         ar_last_name: formData.ar_last_name,
 
-        en_father_name: formData.en_father_name,
-        ar_father_name: formData.ar_father_name,
         en_grandfather_name: formData.en_grandfather_name,
         ar_grandfather_name: formData.ar_grandfather_name,
-        en_tribe_name: formData.en_tribe_name,
-        ar_tribe_name: formData.ar_tribe_name,
 
         photo: null, // sent separately
         email: formData.student_email,
-        phone: formData.student_phone,
         date_of_birth: formData.date_of_birth,
         age_years: calculateAge(formData.date_of_birth),
         gender: formData.gender,
@@ -353,7 +326,6 @@ function NewRegistrationForPublic() {
         postal_code: formData.postal_code,
         country: formData.country,
         admission_class: formData.admission_class,
-        section: formData.section,
         previous_school: formData.previous_school,
 
         previous_education_system: formData.previous_education_system,
@@ -371,12 +343,11 @@ function NewRegistrationForPublic() {
         is_promoted: true,
         is_active: true,
         is_verified_registration_officer: false,
+        is_draft: isDraft,
         other_datas: {},
       };
 
-      // finalDocuments is already built above
-
-      // 2. Build student_documents metadata
+      // Build student_documents metadata
       const documentMetadata = finalDocuments.map((doc, i) => ({
         document_type: doc.document_type,
         description:
@@ -387,12 +358,17 @@ function NewRegistrationForPublic() {
 
       const form = new FormData();
 
-      // 3. Attach JSON objects
-      form.append("guardian", JSON.stringify(guardian));
+      // Attach JSON objects - multi-guardian architecture
+      form.append("father", JSON.stringify(fatherPayload));
+      form.append("mother", JSON.stringify(motherPayload));
+      form.append("relationship", formData.relationship);
+      if (formData.relationship === 'relative') {
+        form.append("relative", JSON.stringify(relativePayload));
+      }
       form.append("student", JSON.stringify(student));
       form.append("student_documents", JSON.stringify(documentMetadata));
 
-      // 4. Attach photo file
+      // Attach photo file
       if (formData.photo) {
         form.append("student_photo", formData.photo);
       }
@@ -406,18 +382,26 @@ function NewRegistrationForPublic() {
       if (formData.google_map_location_photo) {
         form.append("student_google_map_photo", formData.google_map_location_photo);
       }
-      if (formData.guardian_id_document) {
-        form.append("guardian_id_document", formData.guardian_id_document);
+
+      // Attach guardian ID documents
+      if (formData.father.id_document) {
+        form.append("father_id_document", formData.father.id_document);
+      }
+      if (formData.mother.id_document) {
+        form.append("mother_id_document", formData.mother.id_document);
+      }
+      if (formData.relationship === 'relative' && formData.relative.id_document) {
+        form.append("relative_id_document", formData.relative.id_document);
       }
 
-      // 5. Attach document files
+      // Attach document files
       finalDocuments.forEach((doc, i) => {
         if (doc.file instanceof File) {
-          form.append(`document_file_${i}`, doc.file); // Must match file_field above
+          form.append(`document_file_${i}`, doc.file);
         }
       });
 
-      // 6. Submit request
+      // Submit request
       const response = await fetch(
         `${import.meta.env.VITE_API_BASE_URL}/students/create-student-details/`,
         {
@@ -432,67 +416,110 @@ function NewRegistrationForPublic() {
 
       if (!response.ok || (result.statuscode && result.statuscode !== 201 && result.statuscode !== 200)) {
         console.error("API Error:", result);
-        Swal.fire({
-          title: 'Error!',
-          text: result.errors || result.message || "Failed to submit registration",
-          icon: 'error',
+
+        if (typeof result.errors === "object" && result.errors !== null) {
+          // Flatten structured errors from backend to match frontend state
+          const flattenedErrors: Record<string, string> = {};
+
+          if (result.errors.student) {
+            Object.entries(result.errors.student).forEach(([key, val]) => {
+              flattenedErrors[key] = String(val);
+            });
+          }
+
+          ["father", "mother", "relative"].forEach(guardian => {
+            if (result.errors[guardian]) {
+              Object.entries(result.errors[guardian]).forEach(([key, val]) => {
+                // Map nested keys like father.national_id -> father_national_id
+                flattenedErrors[`${guardian}_${key}`] = String(val);
+              });
+            }
+          });
+
+          if (result.errors.documents) {
+            flattenedErrors["student_documents"] = String(result.errors.documents);
+          }
+
+          setErrors(flattenedErrors);
+
+          // Auto-scroll to first backend error
+          setTimeout(() => {
+            const firstKey = Object.keys(flattenedErrors)[0];
+            const element = document.getElementById(firstKey);
+            if (element) {
+              element.scrollIntoView({ behavior: "smooth", block: "center" });
+              element.focus();
+            }
+          }, 100);
+        } else {
+          // Fallback for non-field errors or string errors
+          Swal.fire({
+            title: 'Error!',
+            text: result.message || "Failed to submit registration",
+            icon: 'error',
+            confirmButtonText: 'OK'
+          });
+        }
+        throw new Error("Validation failed");
+      }
+
+      // 3. Show Success Message
+      if (isDraft) {
+        await Swal.fire({
+          title: 'Draft Saved! | تم حفظ المسودة',
+          text: 'Registration draft has been saved successfully | تم حفظ مسودة التسجيل بنجاح',
+          icon: 'success',
+          timer: 3000,
+          timerProgressBar: true,
           confirmButtonText: 'OK'
         });
-        throw new Error(result.errors || result.message || "Failed to submit registration");
+      } else {
+        await Swal.fire({
+          title: '<span>Registration Successful! | تم التسجيل بنجاح</span>',
+          html: `
+            <div style="text-align: left">
+              <p style="margin-bottom: 1rem">The student registration has been submitted successfully.</p>
+              <div style="background: rgba(102, 42, 20, 0.05); padding: 15px; border-radius: 10px; border: 1px dashed #662a14;">
+                <p style="margin-bottom: 0.5rem"><strong>Student Name:</strong> <span style="color: #662a14">${result.data?.student?.en_first_name || ''} ${result.data?.student?.en_last_name || ''}</span></p>
+                <p style="margin-bottom: 0px"><strong>Admission Number:</strong> <span style="color: #662a14; font-family: monospace; font-weight: bold;">${result.data?.student?.admission_number || 'N/A'}</span></p>
+              </div>
+              <p style="font-size: 0.875rem; color: #6b7280; mt-4">Please keep this admission number for future reference.</p>
+            </div>
+          `,
+          icon: "success",
+          confirmButtonText: "OK",
+          width: "550px",
+          customClass: {
+            popup: "rounded-lg border-2 border-brown-200",
+            title: "text-2xl font-bold",
+            htmlContainer: "text-left",
+          },
+          background: "#fffaf7",
+          showClass: {
+            popup: "animate__animated animate__fadeInDown",
+          },
+          hideClass: {
+            popup: "animate__animated animate__fadeOutUp",
+          },
+        });
       }
-      const token = localStorage.getItem("accessToken");
 
-      // Show success message with student details
-      await Swal.fire({
-        title:
-          '<span >Registration Successful!</span>',
-        html: `
-                      <div style="text-align: left">
-                          <p style="margin-bottom: 1rem">Your registration has been submitted successfully.</p>
-                                  <p style="margin-bottom: 0.5rem">Admission Number:<strong style="color: #662a14">${result.data?.student?.admission_number || 'N/A'}</strong></p>
-                                  <p style="margin-bottom: 0.5rem">Student Name:<strong style="color: #662a14"> ${result.data?.student?.en_first_name || ''} ${result.data?.student?.en_last_name || ''} </strong></p>
-                          <p style="font-size: 0.875rem; color: #6b7280">Please keep this number for future reference.</p>
-                      </div>
-                  `,
-        icon: "success",
-        confirmButtonText: "OK",
-        width: "500px",
-        customClass: {
-          popup: "rounded-lg border-2 border-brown-200",
-          title: "text-2xl font-bold",
-          htmlContainer: "text-left",
-        },
-        background: "#fffaf7", // Light warm background
-        showClass: {
-          popup: "animate__animated animate__fadeInDown",
-        },
-        hideClass: {
-          popup: "animate__animated animate__fadeOutUp",
-        },
-      });
-
-      // Reset form if needed
+      // 4. Reset Form
       setFormData({
-        admission_number: "",
         en_first_name: "",
         en_middle_name: "",
         en_last_name: "",
         ar_first_name: "",
         ar_middle_name: "",
         ar_last_name: "",
-        en_father_name: "",
-        ar_father_name: "",
         en_grandfather_name: "",
         ar_grandfather_name: "",
-        en_tribe_name: "",
-        ar_tribe_name: "",
         photo: null,
         passport_copy: null,
         house_photo: null,
         google_map_location_photo: null,
         google_map_location_url: "",
         student_email: "",
-        student_phone: "",
         student_address: "",
         date_of_birth: "",
         gender: "",
@@ -506,9 +533,9 @@ function NewRegistrationForPublic() {
         house_number: "",
         postal_code: "",
         country: "",
-        admission_class: "",
         section: "",
         previous_school: "",
+        relationship: "",
         previous_education_system: "",
         wanted_education_system: "",
         has_special_needs: false,
@@ -518,21 +545,11 @@ function NewRegistrationForPublic() {
         staying_with: "",
         home_contact: "",
         emergency_contact: "",
-        name_en: "",
-        name_ar: "",
-        phone: "",
-        email: "",
-        address: "",
-        relationship: "",
-        national_id: "",
-        passport_number: "",
-        work_phone: "",
-        mobile: "",
-        occupation: "",
-        workplace: "",
-        guardian_id_document: null,
-
+        father: { ...emptyGuardian },
+        mother: { ...emptyGuardian },
+        relative: { ...emptyGuardian },
         student_documents: [],
+        admission_class: "",
       });
     } catch (error) {
       console.error("Registration error:", error);
@@ -602,10 +619,7 @@ function NewRegistrationForPublic() {
       ar_father_name: "آدم دو",
       en_grandfather_name: "Robert Doe",
       ar_grandfather_name: "روبرت دو",
-      en_tribe_name: "Tribe",
-      ar_tribe_name: "قبيلة",
       student_email: "john.doe@example.com",
-      student_phone: "+96812345678",
       student_address: "123 School Lane",
       date_of_birth: "2015-05-20",
       gender: "M",
@@ -615,24 +629,58 @@ function NewRegistrationForPublic() {
       state: "Muscat",
       postal_code: "123",
       country: "Oman",
-      relationship: "father",
-      national_id: "123456789",
-      name_en: "Adam Doe",
-      name_ar: "آدم دو",
-      phone: "+96887654321",
-      email: "adam.doe@example.com",
-      address: "123 School Lane",
-      passport_number: "P1234567",
-      work_phone: "+96811223344",
-      workplace: "Tech Corp",
-      occupation: "Engineer",
-      admission_class: departments.length > 0 ? departments[0].id : "",
+      relationship: "relative",
+      father: {
+        national_id: "123456789",
+        name_en: "Adam Doe",
+        name_ar: "آدم دو",
+        phone: "+96887654321",
+        mobile: "+96898887776",
+        email: "father@example.com",
+        work_phone: "+96811223344",
+        workplace: "Tech Corp",
+        occupation: "Engineer",
+        passport_number: "P1234567",
+        id_document: null,
+        address: "123 School Lane",
+        is_directly_responsible: false,
+      },
+      mother: {
+        national_id: "987654321",
+        name_en: "Sarah Smith",
+        name_ar: "سارة سميث",
+        phone: "+96899887766",
+        mobile: "+96899776655",
+        email: "mother@example.com",
+        work_phone: "+96811445566",
+        workplace: "Hospital",
+        occupation: "Doctor",
+        passport_number: "P7654321",
+        id_document: null,
+        address: "123 School Lane",
+        is_directly_responsible: false,
+      },
+      relative: {
+        national_id: "55443322",
+        name_en: "Uncle Bob",
+        name_ar: "العم بوب",
+        phone: "+96895554443",
+        mobile: "+96894443332",
+        email: "relative@example.com",
+        work_phone: "+96824998877",
+        workplace: "Private Sector",
+        occupation: "Manager",
+        passport_number: "P5566778",
+        id_document: null,
+        address: "Muscat, Oman",
+        is_directly_responsible: true,
+      },
     };
     setFormData(dummyData);
 
     Swal.fire({
       title: 'Success!',
-      text: 'Form filled with dummy data (Father selected)',
+      text: 'Form filled with dummy data (Relative selected)',
       icon: 'success',
       timer: 2000,
       timerProgressBar: true,
@@ -646,14 +694,13 @@ function NewRegistrationForPublic() {
         ...formData,
         photo: e.target.files[0],
       });
-      Swal.fire({
-        title: 'Success!',
-        text: 'Student photo uploaded',
-        icon: 'success',
-        timer: 5000,
-        timerProgressBar: true,
-        confirmButtonText: 'OK'
-      });
+      if (errors.photo) {
+        setErrors((prev) => {
+          const newErrors = { ...prev };
+          delete newErrors.photo;
+          return newErrors;
+        });
+      }
     }
   };
 
@@ -706,7 +753,7 @@ function NewRegistrationForPublic() {
 
   return (
     <>
-      {(isLoading.departments || isLoading.sections || isSubmitting) && (
+      {(isLoading.departments || isSubmitting) && (
         <FullPageLoader />
       )}
 
@@ -716,6 +763,16 @@ function NewRegistrationForPublic() {
             <UserPlus className="h-5 w-5" />
             New Student Registration | تسجيل طالب جديد
           </CardTitle>
+          <Button
+            type="button"
+            onClick={handleFillDummyData}
+            variant="outline"
+            size="sm"
+            className="flex items-center gap-2"
+          >
+            <Database className="h-4 w-4" />
+            Fill Dummy Data
+          </Button>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-14">
@@ -733,13 +790,21 @@ function NewRegistrationForPublic() {
                       key={option.value}
                       type="button"
                       id="relationship"
-                      onClick={() => setFormData({ ...formData, relationship: option.value })}
+                      onClick={() => {
+                        setFormData({
+                          ...formData,
+                          relationship: option.value,
+                          father: { ...formData.father, is_directly_responsible: option.value === 'father' },
+                          mother: { ...formData.mother, is_directly_responsible: option.value === 'mother' },
+                          relative: { ...formData.relative, is_directly_responsible: option.value === 'relative' }
+                        });
+                      }}
                       className={`flex flex-col items-center gap-3 group transition-all duration-300 ${formData.relationship === option.value ? 'scale-110' : 'opacity-70 hover:opacity-100'
                         }`}
                     >
                       <div className={`w-20 h-20 md:w-28 md:h-28 rounded-full border-4 flex items-center justify-center transition-all duration-300 shadow-md ${formData.relationship === option.value
-                          ? 'border-primary bg-primary text-white elevation-lg'
-                          : 'border-white bg-white text-gray-400 group-hover:border-blue-200'
+                        ? 'border-primary bg-primary text-white elevation-lg'
+                        : 'border-white bg-white text-gray-400 group-hover:border-blue-200'
                         }`}>
                         <User className={`h-10 w-10 md:h-14 md:w-14 ${formData.relationship === option.value ? 'animate-pulse' : ''}`} />
                       </div>
@@ -773,105 +838,118 @@ function NewRegistrationForPublic() {
                   </h4>
                 </div>
               )}
+
             </div>
 
             {/* Dynamic Parent/Guardian Details Section based on Selection */}
             {formData.relationship && (() => {
-              const config = {
+              const guardianConfigs = {
                 father: {
-                  title: "Father Details | بيانات الأب",
+                  title: "FATHER DETAILS | بيانات الأب",
                   label: "Father",
                   arLabel: "الأب",
-                  theme: "brown",
+                  key: "father" as const,
                   border: "border-primary/20",
                   bg: "bg-primary/5",
                   textColor: "text-primary",
                   inputBorder: "border-primary/20",
                   focusBorder: "focus:border-primary/40",
-                  phoneBorder: "#662a14",
+                  phoneBorder: "#e5e7eb",
                   icon: <User className="h-6 w-6" />,
                   iconBg: "bg-primary"
                 },
                 mother: {
-                  title: "Mother Details | بيانات الأم",
+                  title: "MOTHER DETAILS | بيانات الأم",
                   label: "Mother",
                   arLabel: "الأم",
-                  theme: "pink",
+                  key: "mother" as const,
                   border: "border-pink-100",
                   bg: "bg-pink-50/20",
                   textColor: "text-pink-900",
                   inputBorder: "border-pink-100",
                   focusBorder: "focus:border-pink-400",
-                  phoneBorder: "#fbcfe8",
+                  phoneBorder: "#e5e7eb",
                   icon: <User className="h-6 w-6" />,
                   iconBg: "bg-pink-600"
                 },
                 relative: {
-                  title: "Relative Details | بيانات القريب",
+                  title: "RELATIVE DETAILS | بيانات القريب",
                   label: "Relative",
                   arLabel: "القريب",
-                  theme: "orange",
+                  key: "relative" as const,
                   border: "border-orange-100",
                   bg: "bg-orange-50/20",
                   textColor: "text-orange-900",
                   inputBorder: "border-orange-100",
                   focusBorder: "focus:border-orange-400",
-                  phoneBorder: "#fed7aa",
+                  phoneBorder: "#e5e7eb",
                   icon: <User className="h-6 w-6" />,
                   iconBg: "bg-orange-600"
                 }
-              }[formData.relationship as "father" | "mother" | "relative"];
+              };
 
-              if (!config) return null;
+              const updateGuardian = (guardianKey: "father" | "mother" | "relative", field: string, value: any) => {
+                setFormData(prev => ({
+                  ...prev,
+                  [guardianKey]: {
+                    ...prev[guardianKey],
+                    [field]: value,
+                  }
+                }));
+              };
 
-              return (
-                <div className={`border-2 ${config.border} p-8 rounded-2xl ${config.bg} shadow-md`}>
-                  <h4 className={`text-xl font-bold mb-8 flex items-center gap-3 ${config.textColor} border-b-2 ${config.border} pb-4 uppercase tracking-wider`}>
+              const renderGuardianForm = (config: typeof guardianConfigs.father, isResponsible: boolean) => (
+                <div key={config.key} className={`border-2 ${config.border} p-8 rounded-2xl ${config.bg} shadow-md space-y-8`}>
+                  <h4 className={`text-xl font-bold flex items-center gap-3 ${config.textColor} border-b-2 ${config.border} pb-4 uppercase tracking-wider`}>
                     <span className={`${config.iconBg} text-white p-2 rounded-lg`}>
                       {config.icon}
                     </span>
                     {config.title}
+                    {isResponsible && (
+                      <span className="ml-2 text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-bold normal-case tracking-normal animate-in fade-in slide-in-from-left-2 duration-300">
+                        ✓ Directly Responsible | المسؤول المباشر
+                      </span>
+                    )}
                   </h4>
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {/* National ID / ID Number */}
+                    {/* National ID */}
                     <div className="space-y-2">
-                      <Label htmlFor="national_id">{config.label} ID Number * | الرقم المدني *</Label>
+                      <Label htmlFor={`${config.key}_national_id`}>{config.label} ID Number * | الرقم المدني *</Label>
                       <Input
-                        id="national_id"
-                        value={formData.national_id}
-                        onChange={(e) => setFormData({ ...formData, national_id: e.target.value })}
+                        id={`${config.key}_national_id`}
+                        value={formData[config.key].national_id}
+                        onChange={(e) => updateGuardian(config.key, 'national_id', e.target.value)}
                         placeholder={`${config.label} ID Number`}
-                        className={`bg-white ${config.inputBorder} ${config.focusBorder} ${errors.national_id ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+                        className={`bg-white ${config.inputBorder} ${config.focusBorder} ${errors[`${config.key}_national_id`] ? 'border-red-500 ring-1 ring-red-500' : ''}`}
                       />
-                      {errors.national_id && <p className="text-red-500 text-xs font-semibold">{errors.national_id}</p>}
+                      {errors[`${config.key}_national_id`] && <p className="text-red-500 text-xs font-semibold">{errors[`${config.key}_national_id`]}</p>}
                     </div>
 
                     {/* English Name */}
                     <div className="space-y-2">
-                      <Label htmlFor="name_en">{config.label} Name (English) * | اسم {config.arLabel} (إنجليزي) *</Label>
+                      <Label htmlFor={`${config.key}_name_en`}>{config.label} Name (English) * | اسم {config.arLabel} (إنجليزي) *</Label>
                       <Input
-                        id="name_en"
-                        value={formData.name_en}
-                        onChange={(e) => setFormData({ ...formData, name_en: e.target.value })}
+                        id={`${config.key}_name_en`}
+                        value={formData[config.key].name_en}
+                        onChange={(e) => updateGuardian(config.key, 'name_en', e.target.value)}
                         placeholder={`${config.label} Name in English`}
-                        className={`bg-white ${config.inputBorder} ${config.focusBorder} ${errors.name_en ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+                        className={`bg-white ${config.inputBorder} ${config.focusBorder} ${errors[`${config.key}_name_en`] ? 'border-red-500 ring-1 ring-red-500' : ''}`}
                         required
                       />
-                      {errors.name_en && <p className="text-red-500 text-xs font-semibold">{errors.name_en}</p>}
+                      {errors[`${config.key}_name_en`] && <p className="text-red-500 text-xs font-semibold">{errors[`${config.key}_name_en`]}</p>}
                     </div>
 
                     {/* Arabic Name */}
                     <div className="space-y-2">
-                      <Label htmlFor="name_ar">{config.label} Name (Arabic) | اسم {config.arLabel} (عربي)</Label>
+                      <Label htmlFor={`${config.key}_name_ar`}>{config.label} Name (Arabic) | اسم {config.arLabel} (عربي)</Label>
                       <Input
-                        id="name_ar"
-                        value={formData.name_ar}
-                        onChange={(e) => setFormData({ ...formData, name_ar: e.target.value })}
+                        id={`${config.key}_name_ar`}
+                        value={formData[config.key].name_ar}
+                        onChange={(e) => updateGuardian(config.key, 'name_ar', e.target.value)}
                         placeholder={`اسم ${config.arLabel}`}
                         dir="rtl"
-                        className={`bg-white ${config.inputBorder} ${config.focusBorder} ${errors.name_ar ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+                        className={`bg-white ${config.inputBorder} ${config.focusBorder}`}
                       />
-                      {errors.name_ar && <p className="text-red-500 text-xs font-semibold text-right">{errors.name_ar}</p>}
                     </div>
 
                     {/* Phone (Primary) */}
@@ -879,11 +957,13 @@ function NewRegistrationForPublic() {
                       <Label>{config.label} Phone * | الهاتف *</Label>
                       <PhoneInput
                         defaultCountry="om"
-                        value={formData.phone}
-                        onChange={(val) => setFormData({ ...formData, phone: val })}
-                        inputStyle={{ width: "100%", padding: "0.5rem", borderRadius: "0.375rem", border: `1px solid ${errors.phone ? 'red' : config.phoneBorder}` }}
+                        value={formData[config.key].phone}
+                        onChange={(val) => updateGuardian(config.key, 'phone', val)}
+                        style={{ height: "40px", width: "100%" }}
+                        inputStyle={{ width: "100%", height: "40px", padding: "0.5rem", borderRadius: "0 0.375rem 0.375rem 0", border: `1px solid ${errors[`${config.key}_phone`] ? 'red' : config.phoneBorder}`, boxSizing: "border-box" }}
+                        countrySelectorStyleProps={{ buttonStyle: { height: "42px", border: `1px solid ${errors[`${config.key}_phone`] ? 'red' : config.phoneBorder}`, borderRadius: "0.375rem 0 0 0.375rem", borderRight: "none", boxSizing: "border-box" } }}
                       />
-                      {errors.phone && <p className="text-red-500 text-xs font-semibold">{errors.phone}</p>}
+                      {errors[`${config.key}_phone`] && <p className="text-red-500 text-xs font-semibold">{errors[`${config.key}_phone`]}</p>}
                     </div>
 
                     {/* Mobile */}
@@ -891,104 +971,123 @@ function NewRegistrationForPublic() {
                       <Label>{config.label} Mobile | الجوال</Label>
                       <PhoneInput
                         defaultCountry="om"
-                        value={formData.mobile}
-                        onChange={(val) => setFormData({ ...formData, mobile: val })}
-                        inputStyle={{ width: "100%", padding: "0.5rem", borderRadius: "0.375rem", border: `1px solid ${errors.mobile ? 'red' : config.phoneBorder}` }}
+                        value={formData[config.key].mobile}
+                        onChange={(val) => updateGuardian(config.key, 'mobile', val)}
+                        style={{ height: "40px", width: "100%" }}
+                        inputStyle={{ width: "100%", height: "40px", padding: "0.5rem", borderRadius: "0 0.375rem 0.375rem 0", border: `1px solid ${config.phoneBorder}`, boxSizing: "border-box" }}
+                        countrySelectorStyleProps={{ buttonStyle: { height: "40px", border: `1px solid ${config.phoneBorder}`, borderRadius: "0.375rem 0 0 0.375rem", borderRight: "none", boxSizing: "border-box" } }}
                       />
-                      {errors.mobile && <p className="text-red-500 text-xs font-semibold">{errors.mobile}</p>}
                     </div>
 
-                    {/* Email */}
+                    {/* Email (Optional) */}
                     <div className="space-y-2">
-                      <Label htmlFor="email">{config.label} Email * | البريد الإلكتروني *</Label>
+                      <Label htmlFor={`${config.key}_email`}>{config.label} Email | البريد الإلكتروني</Label>
                       <Input
-                        id="email"
+                        id={`${config.key}_email`}
                         type="email"
-                        value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        value={formData[config.key].email}
+                        onChange={(e) => updateGuardian(config.key, 'email', e.target.value)}
                         placeholder="email@example.com"
-                        className={`bg-white ${config.inputBorder} ${config.focusBorder} ${errors.email ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+                        className={`bg-white ${config.inputBorder} ${config.focusBorder}`}
                       />
-                      {errors.email && <p className="text-red-500 text-xs font-semibold">{errors.email}</p>}
                     </div>
 
                     {/* Work Phone */}
                     <div className="space-y-2">
-                      <Label>{config.label} Work Phone * | هاتف العمل *</Label>
+                      <Label>{config.label} Work Phone | هاتف العمل</Label>
                       <PhoneInput
                         defaultCountry="om"
-                        value={formData.work_phone}
-                        onChange={(val) => setFormData({ ...formData, work_phone: val })}
-                        inputStyle={{ width: "100%", padding: "0.5rem", borderRadius: "0.375rem", border: `1px solid ${errors.work_phone ? 'red' : config.phoneBorder}` }}
+                        value={formData[config.key].work_phone}
+                        onChange={(val) => updateGuardian(config.key, 'work_phone', val)}
+                        style={{ height: "40px", width: "100%" }}
+                        inputStyle={{ width: "100%", height: "40px", padding: "0.5rem", borderRadius: "0 0.375rem 0.375rem 0", border: `1px solid ${config.phoneBorder}`, boxSizing: "border-box" }}
+                        countrySelectorStyleProps={{ buttonStyle: { height: "40px", border: `1px solid ${config.phoneBorder}`, borderRadius: "0.375rem 0 0 0.375rem", borderRight: "none", boxSizing: "border-box" } }}
                       />
-                      {errors.work_phone && <p className="text-red-500 text-xs font-semibold">{errors.work_phone}</p>}
                     </div>
 
                     {/* Workplace */}
                     <div className="space-y-2">
-                      <Label htmlFor="workplace">{config.label} Workplace * | جهة العمل *</Label>
+                      <Label htmlFor={`${config.key}_workplace`}>{config.label} Workplace | جهة العمل</Label>
                       <Input
-                        id="workplace"
-                        value={formData.workplace}
-                        onChange={(e) => setFormData({ ...formData, workplace: e.target.value })}
+                        id={`${config.key}_workplace`}
+                        value={formData[config.key].workplace}
+                        onChange={(e) => updateGuardian(config.key, 'workplace', e.target.value)}
                         placeholder="Workplace"
-                        className={`bg-white ${config.inputBorder} ${config.focusBorder} ${errors.workplace ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+                        className={`bg-white ${config.inputBorder} ${config.focusBorder}`}
                       />
-                      {errors.workplace && <p className="text-red-500 text-xs font-semibold">{errors.workplace}</p>}
                     </div>
 
                     {/* Occupation */}
                     <div className="space-y-2">
-                      <Label htmlFor="occupation">{config.label} Occupation * | الوظيفة *</Label>
+                      <Label htmlFor={`${config.key}_occupation`}>{config.label} Occupation | الوظيفة</Label>
                       <Input
-                        id="occupation"
-                        value={formData.occupation}
-                        onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
+                        id={`${config.key}_occupation`}
+                        value={formData[config.key].occupation}
+                        onChange={(e) => updateGuardian(config.key, 'occupation', e.target.value)}
                         placeholder="Occupation"
-                        className={`bg-white ${config.inputBorder} ${config.focusBorder} ${errors.occupation ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+                        className={`bg-white ${config.inputBorder} ${config.focusBorder}`}
                       />
-                      {errors.occupation && <p className="text-red-500 text-xs font-semibold">{errors.occupation}</p>}
                     </div>
 
                     {/* Passport Number */}
                     <div className="space-y-2">
-                      <Label htmlFor="passport_number">{config.label} Passport Number * | رقم الجواز *</Label>
+                      <Label htmlFor={`${config.key}_passport_number`}>{config.label} Passport Number | رقم الجواز</Label>
                       <Input
-                        id="passport_number"
-                        value={formData.passport_number}
-                        onChange={(e) => setFormData({ ...formData, passport_number: e.target.value })}
+                        id={`${config.key}_passport_number`}
+                        value={formData[config.key].passport_number}
+                        onChange={(e) => updateGuardian(config.key, 'passport_number', e.target.value)}
                         placeholder="Passport Number"
-                        className={`bg-white ${config.inputBorder} ${config.focusBorder} ${errors.passport_number ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+                        className={`bg-white ${config.inputBorder} ${config.focusBorder}`}
                       />
-                      {errors.passport_number && <p className="text-red-500 text-xs font-semibold">{errors.passport_number}</p>}
                     </div>
 
                     {/* ID Document */}
                     <div className="space-y-2">
-                      <Label htmlFor="guardian_id_document">{config.label} ID Document * | وثيقة الهوية *</Label>
+                      <Label htmlFor={`${config.key}_id_document`}>{config.label} ID Document * | وثيقة الهوية *</Label>
                       <Input
-                        id="guardian_id_document"
+                        id={`${config.key}_id_document`}
                         type="file"
-                        onChange={(e) => setFormData({ ...formData, guardian_id_document: e.target.files ? e.target.files[0] : null })}
+                        onChange={(e) => updateGuardian(config.key, 'id_document', e.target.files ? e.target.files[0] : null)}
                         accept=".pdf,.jpg,.jpeg,.png"
-                        className={`bg-white ${config.inputBorder} ${errors.guardian_id_document ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+                        className={`bg-white ${config.inputBorder} ${errors[`${config.key}_id_document`] ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+                        required
                       />
-                      {errors.guardian_id_document && <p className="text-red-500 text-xs font-semibold">{errors.guardian_id_document}</p>}
+                      {errors[`${config.key}_id_document`] && <p className="text-red-500 text-xs font-semibold">{errors[`${config.key}_id_document`]}</p>}
                     </div>
 
                     {/* Address */}
                     <div className="md:col-span-2 lg:col-span-3 space-y-2">
-                      <Label htmlFor="address">{config.label} Address * | العنوان *</Label>
+                      <Label htmlFor={`${config.key}_address`}>{config.label} Address | العنوان</Label>
                       <Input
-                        id="address"
-                        value={formData.address}
-                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                        id={`${config.key}_address`}
+                        value={formData[config.key].address}
+                        onChange={(e) => updateGuardian(config.key, 'address', e.target.value)}
                         placeholder="Full Address"
-                        className={`bg-white ${config.inputBorder} ${config.focusBorder} ${errors.address ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+                        className={`bg-white ${config.inputBorder} ${config.focusBorder}`}
                       />
-                      {errors.address && <p className="text-red-500 text-xs font-semibold">{errors.address}</p>}
                     </div>
                   </div>
+                </div>
+              );
+
+              // Determine which forms to show - responsible first
+              const formsToShow: Array<{ config: typeof guardianConfigs.father; isResponsible: boolean }> = [];
+
+              if (formData.relationship === 'father') {
+                formsToShow.push({ config: guardianConfigs.father, isResponsible: true });
+                formsToShow.push({ config: guardianConfigs.mother, isResponsible: false });
+              } else if (formData.relationship === 'mother') {
+                formsToShow.push({ config: guardianConfigs.mother, isResponsible: true });
+                formsToShow.push({ config: guardianConfigs.father, isResponsible: false });
+              } else if (formData.relationship === 'relative') {
+                formsToShow.push({ config: guardianConfigs.relative, isResponsible: true });
+                formsToShow.push({ config: guardianConfigs.father, isResponsible: false });
+                formsToShow.push({ config: guardianConfigs.mother, isResponsible: false });
+              }
+
+              return (
+                <div className="space-y-8">
+                  {formsToShow.map(({ config, isResponsible }) => renderGuardianForm(config, isResponsible))}
                 </div>
               );
             })()}
@@ -1001,24 +1100,25 @@ function NewRegistrationForPublic() {
 
 
               <div className="grid md:grid-cols-2 gap-6">
-                {/* Admission Number */}
+                {/* Admission Class (Department) */}
                 <div>
-                  <Label
-                    htmlFor="admission_number"
-                    className="font-bold text-brown-700"
+                  <Label htmlFor="admission_class" className="font-bold text-brown-700">Admission Class (Department) * | المرحلة الدراسية *</Label>
+                  <Select
+                    value={formData.admission_class}
+                    onValueChange={handleDepartmentChange}
                   >
-                    Admission Number | رقم القبول
-                  </Label>
-                  <Input
-                    id="admission_number"
-                    value={formData.admission_number}
-                    readOnly
-                    className="font-bold text-brown-700 bg-brown-50 cursor-not-allowed"
-                    placeholder="AMPS-YYYY-XXXX"
-                  />
-                  <p className="text-xs text-brown-500 mt-1">
-                    It will auto-generate with the pattern: AMPS-YYYY-XXXX
-                  </p>
+                    <SelectTrigger id="admission_class" className={`rounded-xl bg-white shadow-sm font-bold text-brown-700 ${errors.admission_class ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-200'}`}>
+                      <SelectValue placeholder="Select admission class" />
+                    </SelectTrigger>
+                    {errors.admission_class && <p className="text-red-500 text-xs font-semibold mt-1">{errors.admission_class}</p>}
+                    <SelectContent>
+                      {departments.map((dept) => (
+                        <SelectItem key={dept.id} value={dept.id}>
+                          {dept.department_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Student Photo */}
@@ -1083,7 +1183,7 @@ function NewRegistrationForPublic() {
 
                 <div>
                   <Label htmlFor="en_middle_name">
-                    Middle Name (English) | الاسم الأوسط (إنجليزي)
+                    Second Name / Father Name (English) | اسم الأب (إنجليزي)
                   </Label>
                   <Input
                     id="en_middle_name"
@@ -1094,13 +1194,13 @@ function NewRegistrationForPublic() {
                         en_middle_name: e.target.value,
                       });
                     }}
-                    placeholder="Middle name in English"
+                    placeholder="Father name in English"
                   />
                 </div>
 
                 <div>
                   <Label htmlFor="ar_middle_name">
-                    Middle Name (Arabic) | الاسم الأوسط (عربي)
+                    Second Name / Father Name (Arabic) | اسم الأب (عربي)
                   </Label>
                   <Input
                     id="ar_middle_name"
@@ -1111,7 +1211,7 @@ function NewRegistrationForPublic() {
                         ar_middle_name: e.target.value,
                       })
                     }
-                    placeholder="الاسم الأوسط"
+                    placeholder="اسم الأب"
                     dir="rtl"
                   />
                 </div>
@@ -1150,31 +1250,7 @@ function NewRegistrationForPublic() {
                   />
                 </div>
 
-                {/* New Family Names */}
-                <div>
-                  <Label htmlFor="en_father_name">
-                    Father Name (English) | اسم الأب (إنجليزي)
-                  </Label>
-                  <Input
-                    id="en_father_name"
-                    value={formData.en_father_name}
-                    onChange={(e) => setFormData({ ...formData, en_father_name: e.target.value })}
-                    placeholder="Father name in English"
-                  />
-                </div>
 
-                <div>
-                  <Label htmlFor="ar_father_name">
-                    Father Name (Arabic) | اسم الأب (عربي)
-                  </Label>
-                  <Input
-                    id="ar_father_name"
-                    value={formData.ar_father_name}
-                    onChange={(e) => setFormData({ ...formData, ar_father_name: e.target.value })}
-                    placeholder="اسم الأب"
-                    dir="rtl"
-                  />
-                </div>
 
                 <div>
                   <Label htmlFor="en_grandfather_name">
@@ -1201,30 +1277,7 @@ function NewRegistrationForPublic() {
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="en_tribe_name">
-                    Tribe Name (English) | اسم القبيلة (إنجليزي)
-                  </Label>
-                  <Input
-                    id="en_tribe_name"
-                    value={formData.en_tribe_name}
-                    onChange={(e) => setFormData({ ...formData, en_tribe_name: e.target.value })}
-                    placeholder="Tribe name in English"
-                  />
-                </div>
 
-                <div>
-                  <Label htmlFor="ar_tribe_name">
-                    Tribe Name (Arabic) | اسم القبيلة (عربي)
-                  </Label>
-                  <Input
-                    id="ar_tribe_name"
-                    value={formData.ar_tribe_name}
-                    onChange={(e) => setFormData({ ...formData, ar_tribe_name: e.target.value })}
-                    placeholder="اسم القبيلة"
-                    dir="rtl"
-                  />
-                </div>
 
                 {/* Contact Information */}
                 <div>
@@ -1240,21 +1293,7 @@ function NewRegistrationForPublic() {
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="student_phone">Phone | الهاتف</Label>
-                  <PhoneInput
-                    defaultCountry="om" // Oman as default
-                    value={formData.student_phone}
-                    onChange={(student_phone) => setFormData({ ...formData, student_phone })}
-                    inputStyle={{
-                      width: "100%",
-                      padding: "0.5rem",
-                      borderRadius: "0.375rem",
-                      border: `1px solid ${errors.student_phone ? 'red' : '#d1d5db'}`,
-                    }}
-                  />
-                  {errors.student_phone && <p className="text-red-500 text-xs font-semibold">{errors.student_phone}</p>}
-                </div>
+
 
                 {/* Personal Information */}
                 <div>
@@ -1681,32 +1720,7 @@ function NewRegistrationForPublic() {
                   />
                 </div>
 
-                {/* Admission Class Selection */}
-                <div className="grid grid-cols-1 gap-6 p-6 bg-gray-50/50 rounded-xl border border-gray-100">
-                  <div>
-                    <Label htmlFor="admission_class" className="text-gray-700 font-semibold mb-2 block">
-                      Admission Class | الصف الدراسي <span className="text-red-500">*</span>
-                    </Label>
-                    <Select
-                      value={formData.admission_class}
-                      onValueChange={handleDepartmentChange}
-                    >
-                      <SelectTrigger id="admission_class" className={`bg-white border-gray-200 ${errors.admission_class ? 'border-red-500 ring-1 ring-red-500' : ''}`}>
-                        <SelectValue
-                          placeholder="Select class"
-                        />
-                      </SelectTrigger>
-                      {errors.admission_class && <p className="text-red-500 text-xs font-semibold mt-1">{errors.admission_class}</p>}
-                      <SelectContent>
-                        {departments.map((dept) => (
-                          <SelectItem key={dept.id} value={dept.id}>
-                            {dept.department_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
+
 
                 <div>
                   <Label htmlFor="previous_school">
@@ -1895,21 +1909,42 @@ function NewRegistrationForPublic() {
               {errors.student_documents && <p className="text-red-500 text-sm font-bold bg-red-50 p-2 rounded border border-red-200 mb-2 animate-pulse">{errors.student_documents}</p>}
               {errors.id_proof && <p className="text-red-500 text-sm font-bold bg-red-50 p-2 rounded border border-red-200 mb-2 animate-pulse">{errors.id_proof}</p>}
             </div>
-            <Button
-              type="submit"
-              size="lg"
-              className="w-full bg-green-600 hover:bg-green-700 mt-2"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? (
-                "Submitting..."
-              ) : (
-                <>
-                  <Save className="mr-2 h-5 w-5" />
-                  Register Student | تسجيل الطالب
-                </>
-              )}
-            </Button>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="w-full border-2 border-primary/20 hover:bg-primary/5 transition-all font-bold h-12"
+                disabled={isSubmitting}
+                onClick={(e) => handleSubmit(e, true)}
+              >
+                {isSubmitting ? (
+                  "Saving..."
+                ) : (
+                  <>
+                    <FileText className="mr-2 h-5 w-5" />
+                    Save as Draft | حفظ كمسودة
+                  </>
+                )}
+              </Button>
+              <Button
+                type="button"
+                size="lg"
+                className="w-full bg-green-600 hover:bg-green-700 font-bold h-12"
+                disabled={isSubmitting}
+                onClick={(e) => handleSubmit(e, false)}
+              >
+                {isSubmitting ? (
+                  "Submitting..."
+                ) : (
+                  <>
+                    <Save className="mr-2 h-5 w-5" />
+                    Register Student | تسجيل الطالب
+                  </>
+                )}
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>

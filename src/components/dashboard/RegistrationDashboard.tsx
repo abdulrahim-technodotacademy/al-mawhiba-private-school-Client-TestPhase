@@ -32,7 +32,6 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import NewStudentRegistrationForm from "./NewStudentRegistrationForm";
-import { log } from "console";
 import { toast } from "@/hooks/use-toast";
 
 type Student = {
@@ -52,7 +51,8 @@ type Student = {
   filteredSections: any;
   nextClass: string;
   nextSection: string;
-  status: "pending" | "verified" | "rejected";
+  status: "pending" | "verified" | "rejected" | "draft";
+  isDraft?: boolean;
   registrationDate: string;
   isNewRegistration?: boolean;
   guardian?: {
@@ -62,6 +62,7 @@ type Student = {
     relationship: string;
     national_id: string;
   };
+  searchablePhones?: string;
   admission_class?: {
     id: string,
     department_name?: "10"
@@ -88,16 +89,35 @@ type Section = {
 
 const RegistrationDashboard = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<"search" | "new" | "promotion">(
-    "new"
-  );
   const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const initialTab = params.get('tab');
+  const initialStatus = params.get('status');
+
+  const [activeTab, setActiveTab] = useState<"search" | "new" | "promotion">(
+    (initialTab === 'search' || initialTab === 'new' || initialTab === 'promotion') 
+      ? initialTab as any 
+      : "new"
+  );
+
+  const [verificationStatus, setVerificationStatus] = useState<
+    "all" | "pending" | "verified" | "draft"
+  >(
+    (initialStatus === 'all' || initialStatus === 'pending' || initialStatus === 'verified' || initialStatus === 'draft')
+      ? initialStatus as any
+      : "all"
+  );
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const tab = params.get('tab');
+    const status = params.get('status') as "all" | "pending" | "verified" | "draft";
+    
     if (tab === 'search' || tab === 'new' || tab === 'promotion') {
       setActiveTab(tab as any);
+      if (tab === 'search' && status) {
+        setVerificationStatus(status);
+      }
     }
   }, [location.search]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -120,9 +140,6 @@ const [academicYears, setAcademicYears] = useState<string[]>([])
     >({});
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [verificationStatus, setVerificationStatus] = useState<
-    "all" | "pending" | "verified"
-  >("all");
 
   // Mock data - replace with API calls
 
@@ -169,10 +186,22 @@ const loadStudents = async () => {
       currentSection: student.section?.name || "Unknown",
       nextClass: "", // Optional: Update this if logic is available
       nextSection: "",
-      status: student.is_verified_registration_officer ? "verified" : "pending",
+      status: student.is_draft ? "draft" : (student.is_verified_registration_officer ? "verified" : "pending"),
+      isDraft: student.is_draft,
       registrationDate: student.admission_date || student.created_at || (student.other_datas?.admission_date) || "N/A",
       isNewRegistration: true,
       guardian: student.guardian,
+      searchablePhones: [
+        student.guardian?.phone1,
+        student.guardian?.phone2,
+        student.guardian?.work_phone,
+        student.father?.phone1,
+        student.father?.phone2,
+        student.father?.work_phone,
+        student.mother?.phone1,
+        student.mother?.phone2,
+        student.mother?.work_phone,
+      ].filter(Boolean).join(" "),
       documents: [], // Populate this if available
     }));
 
@@ -312,6 +341,7 @@ const verifyStudent = async (studentId: string) => {
         },
         body: JSON.stringify({
           is_verified_registration_officer: true,
+          is_draft: false,
         }),
       }
     );
@@ -324,7 +354,13 @@ const verifyStudent = async (studentId: string) => {
     setStudents((prev) =>
       prev.map((student) =>
         student.id === studentId
-          ? { ...student, status: "verified", is_verified_registration_officer: true }
+          ? { 
+              ...student, 
+              status: "verified" as const, 
+              is_verified_registration_officer: true, 
+              isDraft: false,
+              admission_date: new Date().toISOString().split('T')[0]
+            }
           : student
       )
     );
@@ -456,14 +492,12 @@ const filteredStudents = students.filter((student) => {
   const nameAr = student.name_ar?.toLowerCase() || '';
   const admissionNumber = student.admission_number?.toLowerCase() || '';
   
-  const isAMPSearch = searchLower.startsWith('amps');
-  const matchesAMPS = isAMPSearch && admissionNumber.includes(searchLower);
-  
   const matchesSearch = 
     !searchTerm ||
-    matchesAMPS ||
+    admissionNumber.includes(searchLower) ||
     nameEn.includes(searchLower) ||
-    nameAr.includes(searchLower);
+    nameAr.includes(searchLower) ||
+    (student.searchablePhones && student.searchablePhones.includes(searchLower));
 
   if (!matchesSearch) {
     return false;
@@ -491,11 +525,12 @@ const filteredStudents = students.filter((student) => {
   // Sort only on the "Search & Verify" tab
   if (activeTab === 'search') {
     const statusOrder = {
-      pending: 1,
-      rejected: 2,
-      verified: 3,
+      draft: 1,
+      pending: 2,
+      rejected: 3,
+      verified: 4,
     };
-    return (statusOrder[a.status] || 2) - (statusOrder[b.status] || 2);
+    return (statusOrder[a.status] || 5) - (statusOrder[b.status] || 5);
   }
   return 0; // No sorting on other tabs
 });
@@ -529,7 +564,10 @@ const filteredStudents = students.filter((student) => {
 
   {/* Summary Metrics */}
   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-    <Card className="bg-gradient-to-br from-blue-50 to-white border-blue-100 shadow-sm transition-all hover:shadow-md">
+    <Card 
+      className="bg-gradient-to-br from-blue-50 to-white border-blue-100 shadow-sm transition-all hover:shadow-md cursor-pointer hover:scale-[1.02]"
+      onClick={() => navigate("/dashboard/registration?tab=search&status=all")}
+    >
       <CardContent className="p-4 flex items-center gap-4">
         <div className="bg-blue-100 p-2.5 rounded-xl">
           <Users className="h-5 w-5 text-blue-600" />
@@ -543,7 +581,10 @@ const filteredStudents = students.filter((student) => {
       </CardContent>
     </Card>
 
-    <Card className="bg-gradient-to-br from-yellow-50 to-white border-yellow-100 shadow-sm transition-all hover:shadow-md">
+    <Card 
+      className="bg-gradient-to-br from-yellow-50 to-white border-yellow-100 shadow-sm transition-all hover:shadow-md cursor-pointer hover:scale-[1.02]"
+      onClick={() => navigate("/dashboard/registration?tab=search&status=pending")}
+    >
       <CardContent className="p-4 flex items-center gap-4">
         <div className="bg-yellow-100 p-2.5 rounded-xl">
           <Clock className="h-5 w-5 text-yellow-600" />
@@ -557,15 +598,18 @@ const filteredStudents = students.filter((student) => {
       </CardContent>
     </Card>
 
-    <Card className="bg-gradient-to-br from-green-50 to-white border-green-100 shadow-sm transition-all hover:shadow-md">
+    <Card 
+      className="bg-gradient-to-br from-purple-50 to-white border-purple-100 shadow-sm transition-all hover:shadow-md cursor-pointer hover:scale-[1.02]"
+      onClick={() => navigate("/dashboard/registration?tab=search&status=draft")}
+    >
       <CardContent className="p-4 flex items-center gap-4">
-        <div className="bg-green-100 p-2.5 rounded-xl">
-          <CheckCircle2 className="h-5 w-5 text-green-600" />
+        <div className="bg-purple-100 p-2.5 rounded-xl">
+          <FileText className="h-5 w-5 text-purple-600" />
         </div>
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-green-600 mb-0.5">Verified Students</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-purple-600 mb-0.5">Draft Records</p>
           <h2 className="text-2xl font-bold text-gray-900 leading-tight">
-            {students.filter(s => s.status === 'verified').length}
+            {students.filter(s => s.status === 'draft').length}
           </h2>
         </div>
       </CardContent>
@@ -581,7 +625,7 @@ const filteredStudents = students.filter((student) => {
             ? "border-b-2 border-blue-600 text-blue-600"
             : "text-gray-600"
         }`}
-        onClick={() => setActiveTab("new")}
+        onClick={() => navigate("/dashboard/registration?tab=new")}
       >
         <UserPlus className="inline mr-2 h-4 w-4" />
         <span className="hidden md:inline">New Registration | تسجيل جديد</span>
@@ -594,7 +638,7 @@ const filteredStudents = students.filter((student) => {
             : "text-gray-600"
         }`}
         onClick={() => {
-          setActiveTab("search");
+          navigate("/dashboard/registration?tab=search&status=all");
         }}
       >
         <Search className="inline mr-2 h-4 w-4" />
@@ -608,7 +652,7 @@ const filteredStudents = students.filter((student) => {
             : "text-gray-600"
         }`}
         onClick={() => {
-          setActiveTab("promotion");
+          navigate("/dashboard/registration?tab=promotion");
         }}
       >
         <Users className="inline mr-2 h-4 w-4" />
@@ -689,6 +733,7 @@ const filteredStudents = students.filter((student) => {
                     <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="pending">Pending</SelectItem>
                     <SelectItem value="verified">Verified</SelectItem>
+                    <SelectItem value="draft">Drafts</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -699,7 +744,7 @@ const filteredStudents = students.filter((student) => {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
             <input
               type="text"
-              placeholder="Search by name, admission number..."
+              placeholder="Search by name, phone, or Admission ID..."
               className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition-all outline-none"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -730,20 +775,26 @@ const filteredStudents = students.filter((student) => {
                        </TableCell>
                       <TableCell
                         className="px-6 py-5 cursor-pointer hover:underline hover:text-blue-600 whitespace-nowrap border-b border-gray-100"
-                        onClick={() => navigate(`/student/${student.id}`)}
+                        onClick={() => navigate(`/student/${student.id}?tab=${activeTab}&status=${verificationStatus}`)}
                       >
                         <div className="font-semibold text-gray-900">{student.name_en}</div>
                         <div className="flex items-center gap-2 mt-1">
                           <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border ${
                             student.status === "verified" ? "bg-green-50 text-green-700 border-green-100" :
                             student.status === "pending" ? "bg-yellow-50 text-yellow-700 border-yellow-100" :
+                            student.status === "draft" ? "bg-purple-50 text-purple-700 border-purple-100" :
                             "bg-red-50 text-red-700 border-red-100"
                           }`}>
                             {student.status}
                           </span>
-                          {student.isNewRegistration && (
+                          {student.isNewRegistration && !student.isDraft && (
                             <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[9px] font-bold uppercase rounded-full border border-blue-100">
                               New registration
+                            </span>
+                          )}
+                          {student.isDraft && (
+                            <span className="px-2 py-0.5 bg-orange-50 text-orange-700 text-[9px] font-bold uppercase rounded-full border border-orange-100">
+                              Incomplete Draft
                             </span>
                           )}
                         </div>
@@ -756,8 +807,8 @@ const filteredStudents = students.filter((student) => {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => navigate(`/student/${student.id}`)}
-                          className="h-8 text-blue-600 hover:bg-blue-50"
+                          onClick={() => navigate(`/student/${student.id}?tab=${activeTab}&status=${verificationStatus}`)}
+                          className="h-8 text-blue-600 hover:bg-blue-50 font-bold"
                         >
                           View Details
                         </Button>
@@ -767,20 +818,29 @@ const filteredStudents = students.filter((student) => {
                               size="sm"
                               onClick={() => verifyStudent(student.id)}
                               disabled={loading}
-                              className="h-8 bg-green-600 hover:bg-green-700 text-white shadow-sm"
+                              className="h-8 bg-green-600 hover:bg-green-700 text-white shadow-sm font-bold"
                             >
                               Verify
                             </Button>
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-8 text-red-600 border-red-100 hover:bg-red-50 hover:text-red-700"
+                              className="h-8 text-red-600 border-red-100 hover:bg-red-50 hover:text-red-700 font-bold"
                               onClick={() => rejectStudent(student.id)}
                               disabled={loading}
                             >
                               Reject
                             </Button>
                           </div>
+                        )}
+                        {student.status === "draft" && (
+                          <Button
+                            size="sm"
+                            className="h-8 bg-orange-600 hover:bg-orange-700 text-white shadow-sm ml-2 font-bold"
+                            onClick={() => navigate(`/student/${student.id}?edit=true&tab=${activeTab}&status=${verificationStatus}`)}
+                          >
+                            Update
+                          </Button>
                         )}
                       </TableCell>
                     </TableRow>
@@ -905,7 +965,7 @@ const filteredStudents = students.filter((student) => {
                     </TableCell>
                     <TableCell 
                       className="px-6 py-5 cursor-pointer hover:underline hover:text-blue-600 whitespace-nowrap border-b border-gray-100"
-                      onClick={() => navigate(`/student/${student.id}`)}
+                      onClick={() => navigate(`/student/${student.id}?tab=${activeTab}&status=${verificationStatus}`)}
                     >
                       <div className="font-semibold text-gray-900">{student.name_en}</div>
                       <div className="flex items-center gap-2 mt-1">
@@ -985,7 +1045,7 @@ const filteredStudents = students.filter((student) => {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => navigate(`/student/${student.id}`)}
+                        onClick={() => navigate(`/student/${student.id}?tab=${activeTab}&status=${verificationStatus}`)}
                         className="h-8 text-blue-600 hover:bg-blue-50 font-semibold"
                       >
                         Details

@@ -23,7 +23,6 @@ const AccountAdminDashboard = () => {
   // *** MODIFICATION: Removed 'billing' tab state as it's no longer needed ***
   const [activeTab, setActiveTab] = useState<'yearly'>('yearly');
   const [selectedYear, setSelectedYear] = useState<string>('all');
-  const [summaryYearFilter, setSummaryYearFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [academicYears, setAcademicYears] = useState<any[]>([]);
@@ -31,7 +30,6 @@ const AccountAdminDashboard = () => {
   const [studentList, setStudentList] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [availableClasses, setAvailableClasses] = useState<string[]>([]);
-  const [availblesection, setavailblesection] = useState<string[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [studentDetails, setStudentDetails] = useState<any>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -55,7 +53,6 @@ const AccountAdminDashboard = () => {
   // Export Modal States
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportSelectedYears, setExportSelectedYears] = useState<string[]>([]);
-  const [selectedSection, setSelectedSection] = useState<string>('all');
 
 
   // === NEW STATES for the signature process ===
@@ -125,6 +122,7 @@ const AccountAdminDashboard = () => {
 
       // Process student data with enhanced payment information
 
+      const studentMap = new Map();
       const processedStudents: any[] = [];
 
       students.forEach((student: any) => {
@@ -134,20 +132,27 @@ const AccountAdminDashboard = () => {
         ags.forEach((ag: any) => {
           const currentYearId = ag.academic_year;
           const yearName = academicYears.find(y => y.id === currentYearId)?.name || currentYearId;
+          const uniqueKey = `${student.id}-${currentYearId}`;
+
+          // Skip if we already processed this student for this year
+          if (studentMap.has(uniqueKey)) return;
+          studentMap.set(uniqueKey, true);
 
           const paymentHistory = (student.payment_history || []).filter((p: any) => p.academic_year === currentYearId);
           const totalFees = parseFloat(ag.total_fees_omr || "0");
-          const totalPaid = parseFloat(paymentHistory.reduce((sum: number, p: any) => sum + parseFloat(p.paid_amount || "0"), 0).toFixed(2));
+          const initialPaid = parseFloat(ag.initial_paid_amount || "0");
+          const historyPaid = parseFloat(paymentHistory.reduce((sum: number, p: any) => sum + parseFloat(p.paid_amount || "0"), 0).toFixed(2));
+          const totalPaid = initialPaid + historyPaid;
           const pendingAmount = parseFloat((totalFees - totalPaid).toFixed(2));
           const paymentComplete = pendingAmount <= 0.01;
           const totalInstallments = ag.installment_plan === "one" ? 1 : ag.installment_plan === "two" ? 2 : 4;
 
           processedStudents.push({
-            id: `${student.id}-${currentYearId}`, // Unique ID for table keys
+            id: uniqueKey, // Unique ID for table keys
             originalId: student.id,
             admissionNumber: student.admission_number,
-            name: `${student.en_first_name} ${student.en_last_name}`,
-            nameAr: `${student.ar_first_name} ${student.ar_last_name}`,
+            name: `${student.en_first_name || ""} ${student.en_last_name || ""}`.trim(),
+            nameAr: `${student.ar_first_name || ""} ${student.ar_last_name || ""}`.trim(),
             grade: student.admission_class?.department_name || 'N/A',
             section: student.section?.name || '',
             status: student.is_active ? 'Active' : 'Inactive',
@@ -189,17 +194,6 @@ const AccountAdminDashboard = () => {
 
       setAvailableClasses(classes);
 
-      // Extract unique sections for filtering
-      const studentssection = students.map((student: any) => student.section?.name).filter(Boolean);
-      console.log('studentssection', studentssection);
-
-      const section = [...new Set(studentssection)] as string[];
-
-
-      setavailblesection(section);
-
-
-
       // Calculate yearly summary (STAYS AS ALL YEARS)
       const summaries = academicYears.map(yearObj => {
         const yearStudents = processedStudents.filter(s => s.academicYearId === yearObj.id);
@@ -231,13 +225,20 @@ const AccountAdminDashboard = () => {
 
   // Filter students based on Year, search and class/section selection
   const filteredStudents = studentList.filter(student => {
+    // 1. Check Year
     const matchesYear = selectedYear === 'all' || student.academicYearId === selectedYear;
-    const matchesSearch = student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      student.admissionNumber.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    // 2. Check Search (Name or Admission Number)
+    const searchLow = searchQuery.toLowerCase().trim();
+    const matchesSearch = !searchLow || 
+      (student.name || "").toLowerCase().includes(searchLow) ||
+      (student.nameAr || "").toLowerCase().includes(searchLow) ||
+      (student.admissionNumber || "").toLowerCase().includes(searchLow);
+      
+    // 3. Check Class
     const matchesClass = selectedClass === 'all' || student.grade === selectedClass;
-    const matchesSection = selectedSection === 'all' || student.section === selectedSection;
 
-    return matchesYear && matchesSearch && matchesClass && matchesSection;
+    return matchesYear && matchesSearch && matchesClass;
   });
 
   const showStudentDetails = async (student: any) => {
@@ -574,21 +575,22 @@ const AccountAdminDashboard = () => {
 
     // For two-installment plan
     if (agreement.installment_plan === "two") {
-      const installmentAmount = (totalFees / 2).toFixed(2);
+      const inst1 = parseFloat(agreement.installment1_amount || "0");
+      const inst2 = parseFloat(agreement.installment2_amount || "0");
 
       if (!agreement.first_installment_paid) {
         payments.push({
           value: "first",
-          label: `First Installment (50% - ${installmentAmount} OMR)`,
-          amount: Math.min(remainingAmount, parseFloat(installmentAmount)).toFixed(2)
+          label: `First Installment (${inst1.toFixed(3)} OMR)`,
+          amount: Math.min(remainingAmount, inst1).toFixed(2)
         });
       }
 
       if (agreement.first_installment_paid && !agreement.second_installment_paid) {
         payments.push({
           value: "second",
-          label: `Second Installment (50% - ${installmentAmount} OMR)`,
-          amount: Math.min(remainingAmount, parseFloat(installmentAmount)).toFixed(2)
+          label: `Second Installment (${inst2.toFixed(3)} OMR)`,
+          amount: Math.min(remainingAmount, inst2).toFixed(2)
         });
       }
 
@@ -597,37 +599,40 @@ const AccountAdminDashboard = () => {
 
     // For four-installment plan
     if (agreement.installment_plan === "four") {
-      const installmentAmount = (totalFees / 4).toFixed(2);
+      const inst1 = parseFloat(agreement.installment1_amount || "0");
+      const inst2 = parseFloat(agreement.installment2_amount || "0");
+      const inst3 = parseFloat(agreement.installment3_amount || "0");
+      const inst4 = parseFloat(agreement.installment4_amount || "0");
 
       if (!agreement.first_installment_paid) {
         payments.push({
           value: "first",
-          label: `First Installment (25% - ${installmentAmount} OMR)`,
-          amount: Math.min(remainingAmount, parseFloat(installmentAmount)).toFixed(2)
+          label: `First Installment (${inst1.toFixed(3)} OMR)`,
+          amount: Math.min(remainingAmount, inst1).toFixed(2)
         });
       }
 
       if (agreement.first_installment_paid && !agreement.second_installment_paid) {
         payments.push({
           value: "second",
-          label: `Second Installment (25% - ${installmentAmount} OMR)`,
-          amount: Math.min(remainingAmount, parseFloat(installmentAmount)).toFixed(2)
+          label: `Second Installment (${inst2.toFixed(3)} OMR)`,
+          amount: Math.min(remainingAmount, inst2).toFixed(2)
         });
       }
 
       if (agreement.second_installment_paid && !agreement.third_installment_paid) {
         payments.push({
           value: "third",
-          label: `Third Installment (25% - ${installmentAmount} OMR)`,
-          amount: Math.min(remainingAmount, parseFloat(installmentAmount)).toFixed(2)
+          label: `Third Installment (${inst3.toFixed(3)} OMR)`,
+          amount: Math.min(remainingAmount, inst3).toFixed(2)
         });
       }
 
       if (agreement.third_installment_paid && !agreement.fourth_installment_paid) {
         payments.push({
           value: "fourth",
-          label: `Fourth Installment (25% - ${installmentAmount} OMR)`,
-          amount: Math.min(remainingAmount, parseFloat(installmentAmount)).toFixed(2)
+          label: `Fourth Installment (${inst4.toFixed(3)} OMR)`,
+          amount: Math.min(remainingAmount, inst4).toFixed(2)
         });
       }
 
@@ -951,98 +956,27 @@ const AccountAdminDashboard = () => {
         ) : (
           // *** MODIFICATION: This is now the only content view ***
           <div className="space-y-6">
-            {/* --- Yearly Financial Summary Section --- */}
-            <Card className="border-gray-200 overflow-hidden">
-              <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2 p-4 sm:p-6">
-                <CardTitle className="text-lg sm:text-xl font-bold">
-                  Financial Summary | ملخص مالي
-                </CardTitle>
-                <div className="flex flex-col xs:flex-row items-stretch xs:items-center gap-3 w-full sm:w-auto">
-                  <div className="w-full sm:w-40 md:w-48">
-                    <select
-                      className="block w-full px-3 py-1.5 text-sm border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500"
-                      value={summaryYearFilter}
-                      onChange={(e) => setSummaryYearFilter(e.target.value)}
-                    >
-                      <option value="all">All Years</option>
-                      {academicYears.map((year) => (
-                        <option key={year.id} value={year.id}>
-                          {year.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex items-center justify-center gap-2 whitespace-nowrap h-9 px-3"
-                    onClick={() => {
-                      setExportSelectedYears(academicYears.map(y => y.id));
-                      setIsExportModalOpen(true);
-                    }}
-                  >
-                    <Download className="h-4 w-4 text-red-600" />
-                    <span className="text-xs sm:text-sm">Export | تصدير</span>
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          YEAR | السنة
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          STUDENTS | الطلاب
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          TOTAL REVENUE | إجمالي الإيرادات
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          PAID | المدفوع
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          COLLECTION RATE | معدل التحصيل
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {yearlyData
-                        .filter(year => summaryYearFilter === 'all' || year.id === summaryYearFilter)
-                        .map((year, index) => (
-                          <tr key={index} className="hover:bg-gray-50">
-                            <td className="px-4 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                              {year.year}
-                            </td>
-                            <td className="px-4 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-sm text-gray-500">
-                              {year.students}
-                            </td>
-                            <td className="px-4 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-sm text-gray-500">
-                              {year.revenue} OMR
-                            </td>
-                            <td className="px-4 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-sm text-gray-500">
-                              {year.paid} OMR
-                            </td>
-                            <td className="px-4 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-sm text-gray-500">
-                              {year.collectionRate}%
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
+            {/* Financial Summary card removed as requested */}
 
             {/* --- Student List / Billing Section --- */}
             {/* *** MODIFICATION: This entire Card was moved here from the old 'billing' tab *** */}
             <Card className="border-gray-200">
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-lg">
                   Student List for {yearlyData[0]?.year} | قائمة الطلاب لسنة {yearlyData[0]?.year}
                 </CardTitle>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center justify-center gap-2 whitespace-nowrap h-9 px-3"
+                  onClick={() => {
+                    setExportSelectedYears(academicYears.map(y => y.id));
+                    setIsExportModalOpen(true);
+                  }}
+                >
+                  <Download className="h-4 w-4 text-red-600" />
+                  <span className="text-xs sm:text-sm">Export | تصدير</span>
+                </Button>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3 mb-6 items-end">
@@ -1051,7 +985,7 @@ const AccountAdminDashboard = () => {
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                       <Input
-                        placeholder="Search..."
+                        placeholder="Search Name or Admission Number..."
                         className="pl-10 h-10"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
@@ -1084,19 +1018,7 @@ const AccountAdminDashboard = () => {
                       ))}
                     </select>
                   </div>
-                  <div className="w-full">
-                    <Label className="text-xs mb-1.5 block text-gray-500 font-medium font-medium font-medium font-medium">Section | الفصل</Label>
-                    <select
-                      className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 text-sm h-10"
-                      value={selectedSection}
-                      onChange={(e) => setSelectedSection(e.target.value)}
-                    >
-                      <option value="all">All Sections</option>
-                      {availblesection.map((sec) => (
-                        <option key={sec} value={sec}>{sec}</option>
-                      ))}
-                    </select>
-                  </div>
+                    {/* Section filter removed */}
                   <div className="w-full sm:col-span-2 lg:col-span-1">
                     <Button 
                       variant="outline" 
@@ -1104,7 +1026,6 @@ const AccountAdminDashboard = () => {
                       onClick={() => {
                         setSelectedYear("all");
                         setSelectedClass("all");
-                        setSelectedSection("all");
                         setSearchQuery("");
                       }}
                     >

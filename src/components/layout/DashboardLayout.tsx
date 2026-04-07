@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { LogOut, Home, User, LayoutDashboard, Globe } from "lucide-react";
+import { LogOut, Home, User, LayoutDashboard, Globe, ChevronLeft } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -53,15 +53,30 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
       {/* Top Header */}
       <header className="h-20 bg-white border-b border-gray-100 px-4 sm:px-8 flex items-center shrink-0 shadow-sm z-10">
         <div className="flex-1 flex items-center justify-between">
-          <div 
-            className="flex items-center space-x-4 cursor-pointer hover:opacity-80 transition-opacity" 
-            onClick={() => navigate("/")}
-          >
-            <img src="/assets/logobr.png" alt="School Logo" className="w-12 h-12 sm:w-16 sm:h-16 object-contain" />
-            <div className="hidden xs:block">
-              <h1 className="text-sm sm:text-base font-bold text-gray-900 leading-tight">AL-MAWHIBA PRIVATE SCHOOL</h1>
-              <p className="text-[10px] sm:text-xs text-gray-500 leading-tight font-medium" dir="rtl">مدرسة الموهبة الخاصة</p>
-            </div>
+          <div className="flex items-center space-x-4">
+             {/* Global Back Button */}
+             {location.pathname !== "/" && location.pathname !== "/dashboard" && location.pathname !== "/dashboard/registration" && (
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={() => navigate(-1)}
+                  className="rounded-full hover:bg-gray-100 mr-2 border border-gray-100 shadow-sm"
+                  title="Go Back | الرجوع"
+                >
+                  <ChevronLeft className="h-5 w-5 text-gray-600" />
+                </Button>
+             )}
+             
+             <div 
+               className="flex items-center space-x-4 cursor-pointer hover:opacity-80 transition-opacity" 
+               onClick={() => navigate("/")}
+             >
+               <img src="/assets/logobr.png" alt="School Logo" className="w-12 h-12 sm:w-16 sm:h-16 object-contain" />
+               <div className="hidden xs:block">
+                 <h1 className="text-sm sm:text-base font-bold text-gray-900 leading-tight">AL-MAWHIBA PRIVATE SCHOOL</h1>
+                 <p className="text-[10px] sm:text-xs text-gray-500 leading-tight font-medium" dir="rtl">مدرسة الموهبة الخاصة</p>
+               </div>
+             </div>
           </div>
           
           <div className="flex items-center space-x-3 sm:space-x-6">
