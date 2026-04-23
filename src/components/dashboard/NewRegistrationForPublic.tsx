@@ -203,8 +203,19 @@ function NewRegistrationForPublic() {
 
     if (!isDraft) {
       // Validate Required Fields
-      if (!formData.en_first_name) newErrors.en_first_name = "First name is required | الاسم الأول مطلوب";
-      if (!formData.ar_first_name) newErrors.ar_first_name = "Arabic first name is required | الاسم الأول بالعربي مطلوب";
+      // Validate Name Rows: Each of the 4 rows must have at least one language filled
+      if (!formData.en_first_name && !formData.ar_first_name) {
+        newErrors.first_name = "First name is required (English or Arabic) | الاسم الأول مطلوب (إنجليزي أو عربي)";
+      }
+      if (!formData.en_middle_name && !formData.ar_middle_name) {
+        newErrors.middle_name = "Second Name / Father Name is required | اسم الأب مطلوب";
+      }
+      if (!formData.en_grandfather_name && !formData.ar_grandfather_name) {
+        newErrors.grandfather_name = "Grandfather Name is required | اسم الجد مطلوب";
+      }
+      if (!formData.en_last_name && !formData.ar_last_name) {
+        newErrors.last_name = "Last Name / Family Name is required | اسم العائلة مطلوب";
+      }
       if (!formData.date_of_birth) newErrors.date_of_birth = "Date of birth is required | تاريخ الميلاد مطلوب";
       if (!formData.gender) newErrors.gender = "Gender is required | الجنس مطلوب";
       if (!formData.nationality) newErrors.nationality = "Nationality is required | الجنسية مطلوبة";
@@ -482,7 +493,7 @@ function NewRegistrationForPublic() {
             <div style="text-align: left">
               <p style="margin-bottom: 1rem">The student registration has been submitted successfully.</p>
               <div style="background: rgba(102, 42, 20, 0.05); padding: 15px; border-radius: 10px; border: 1px dashed #662a14;">
-                <p style="margin-bottom: 0.5rem"><strong>Student Name:</strong> <span style="color: #662a14">${result.data?.student?.en_first_name || ''} ${result.data?.student?.en_last_name || ''}</span></p>
+                <p style="margin-bottom: 0.5rem"><strong>Student Name:</strong> <span style="color: #662a14">${[result.data?.student?.en_first_name, result.data?.student?.en_middle_name, result.data?.student?.en_grandfather_name, result.data?.student?.en_last_name].filter(Boolean).join(' ')}</span></p>
                 <p style="margin-bottom: 0px"><strong>Admission Number:</strong> <span style="color: #662a14; font-family: monospace; font-weight: bold;">${result.data?.student?.admission_number || 'N/A'}</span></p>
               </div>
               <p style="font-size: 0.875rem; color: #6b7280; mt-4">Please keep this admission number for future reference.</p>
@@ -1069,11 +1080,9 @@ function NewRegistrationForPublic() {
                         en_first_name: e.target.value,
                       });
                     }}
-                    placeholder="e.g. Ahmed"
-                    className={errors.en_first_name ? 'border-red-500 ring-1 ring-red-500' : ''}
-                    required
+                    className={errors.first_name || errors.en_first_name ? 'border-red-500 ring-1 ring-red-500' : ''}
                   />
-                  {errors.en_first_name && <p className="text-red-500 text-xs font-semibold">{errors.en_first_name}</p>}
+                  {(errors.first_name || errors.en_first_name) && <p className="text-red-500 text-xs font-semibold">{errors.first_name || errors.en_first_name}</p>}
                 </div>
 
                 <div>
@@ -1091,10 +1100,9 @@ function NewRegistrationForPublic() {
                     }
                     placeholder="أحمد"
                     dir="rtl"
-                    className={errors.ar_first_name ? 'border-red-500 ring-1 ring-red-500' : ''}
-                    required
+                    className={errors.first_name || errors.ar_first_name ? 'border-red-500 ring-1 ring-red-500' : ''}
                   />
-                  {errors.ar_first_name && <p className="text-red-500 text-xs font-semibold text-right">{errors.ar_first_name}</p>}
+                  {(errors.first_name || errors.ar_first_name) && <p className="text-red-500 text-xs font-semibold text-right">{errors.first_name || errors.ar_first_name}</p>}
                 </div>
 
                 <div>
@@ -1110,8 +1118,9 @@ function NewRegistrationForPublic() {
                         en_middle_name: e.target.value,
                       });
                     }}
-                    placeholder="Father name in English"
+                    className={errors.middle_name ? 'border-red-500 ring-1 ring-red-500' : ''}
                   />
+                  {errors.middle_name && <p className="text-red-500 text-xs font-semibold">{errors.middle_name}</p>}
                 </div>
 
                 <div>
@@ -1129,44 +1138,10 @@ function NewRegistrationForPublic() {
                     }
                     placeholder="اسم الأب"
                     dir="rtl"
+                    className={errors.middle_name ? 'border-red-500 ring-1 ring-red-500' : ''}
                   />
+                  {errors.middle_name && <p className="text-red-500 text-xs font-semibold text-right">{errors.middle_name}</p>}
                 </div>
-
-                <div>
-                  <Label htmlFor="en_last_name">
-                    Last Name (English) | اسم العائلة (إنجليزي)
-                  </Label>
-                  <Input
-                    id="en_last_name"
-                    value={formData.en_last_name}
-                    onChange={(e) => {
-                      setFormData({
-                        ...formData,
-                        en_last_name: e.target.value,
-                      });
-                    }}
-                    placeholder="e.g. Khan"
-                  />
-                </div>
-
-                {/* Arabic Name */}
-
-                <div>
-                  <Label htmlFor="ar_last_name">
-                    Last Name (Arabic) | اسم العائلة (عربي)
-                  </Label>
-                  <Input
-                    id="ar_last_name"
-                    value={formData.ar_last_name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, ar_last_name: e.target.value })
-                    }
-                    placeholder="خان"
-                    dir="rtl"
-                  />
-                </div>
-
-
 
                 <div>
                   <Label htmlFor="en_grandfather_name">
@@ -1176,8 +1151,9 @@ function NewRegistrationForPublic() {
                     id="en_grandfather_name"
                     value={formData.en_grandfather_name}
                     onChange={(e) => setFormData({ ...formData, en_grandfather_name: e.target.value })}
-                    placeholder="Grandfather name in English"
+                    className={errors.grandfather_name ? 'border-red-500 ring-1 ring-red-500' : ''}
                   />
+                  {errors.grandfather_name && <p className="text-red-500 text-xs font-semibold">{errors.grandfather_name}</p>}
                 </div>
 
                 <div>
@@ -1190,7 +1166,47 @@ function NewRegistrationForPublic() {
                     onChange={(e) => setFormData({ ...formData, ar_grandfather_name: e.target.value })}
                     placeholder="اسم الجد"
                     dir="rtl"
+                    className={errors.grandfather_name ? 'border-red-500 ring-1 ring-red-500' : ''}
                   />
+                  {errors.grandfather_name && <p className="text-red-500 text-xs font-semibold text-right">{errors.grandfather_name}</p>}
+                </div>
+
+                <div>
+                  <Label htmlFor="en_last_name">
+                    Last Name / Family Name (English) | اسم العائلة (إنجليزي)
+                  </Label>
+                  <Input
+                    id="en_last_name"
+                    value={formData.en_last_name}
+                    onChange={(e) => {
+                      setFormData({
+                        ...formData,
+                        en_last_name: e.target.value,
+                      });
+                    }}
+                    placeholder="e.g. Khan"
+                    className={errors.last_name || errors.en_last_name ? 'border-red-500 ring-1 ring-red-500' : ''}
+                  />
+                  {(errors.last_name || errors.en_last_name) && <p className="text-red-500 text-xs font-semibold">{errors.last_name || errors.en_last_name}</p>}
+                </div>
+
+                {/* Arabic Name */}
+
+                <div>
+                  <Label htmlFor="ar_last_name">
+                    Last Name / Family Name (Arabic) | اسم العائلة (عربي)
+                  </Label>
+                  <Input
+                    id="ar_last_name"
+                    value={formData.ar_last_name}
+                    onChange={(e) =>
+                      setFormData({ ...formData, ar_last_name: e.target.value })
+                    }
+                    placeholder="خان"
+                    dir="rtl"
+                    className={errors.last_name || errors.ar_last_name ? 'border-red-500 ring-1 ring-red-500' : ''}
+                  />
+                  {(errors.last_name || errors.ar_last_name) && <p className="text-red-500 text-xs font-semibold text-right">{errors.last_name || errors.ar_last_name}</p>}
                 </div>
 
 

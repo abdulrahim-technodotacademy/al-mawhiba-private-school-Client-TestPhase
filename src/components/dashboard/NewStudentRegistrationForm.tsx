@@ -98,6 +98,7 @@ const NewStudentRegistrationForm = () => {
     ar_grandfather_name: "",
     photo: null as File | null,
     passport_copy: null as File | null,
+    house_photo: null as File | null,
     student_email: "",
     date_of_birth: "",
     gender: "",
@@ -188,8 +189,19 @@ const NewStudentRegistrationForm = () => {
 
     if (!isDraft) {
       // Validate Required Fields
-      if (!formData.en_first_name) newErrors.en_first_name = "First name is required | الاسم الأول مطلوب";
-      if (!formData.ar_first_name) newErrors.ar_first_name = "Arabic first name is required | الاسم الأول بالعربي مطلوب";
+      // Validate Name Rows: Each of the 4 rows must have at least one language filled
+      if (!formData.en_first_name && !formData.ar_first_name) {
+        newErrors.first_name = "First name is required (English or Arabic) | الاسم الأول مطلوب (إنجليزي أو عربي)";
+      }
+      if (!formData.en_middle_name && !formData.ar_middle_name) {
+        newErrors.middle_name = "Second Name / Father Name is required | اسم الأب مطلوب";
+      }
+      if (!formData.en_grandfather_name && !formData.ar_grandfather_name) {
+        newErrors.grandfather_name = "Grandfather Name is required | اسم الجد مطلوب";
+      }
+      if (!formData.en_last_name && !formData.ar_last_name) {
+        newErrors.last_name = "Last Name / Family Name is required | اسم العائلة مطلوب";
+      }
       if (!formData.date_of_birth) newErrors.date_of_birth = "Date of birth is required | تاريخ الميلاد مطلوب";
       if (!formData.gender) newErrors.gender = "Gender is required | الجنس مطلوب";
       if (!formData.nationality) newErrors.nationality = "Nationality is required | الجنسية مطلوبة";
@@ -223,6 +235,10 @@ const NewStudentRegistrationForm = () => {
 
       // File validations
       if (!formData.photo) newErrors.photo = "Student photo is required | صورة الطالب مطلوبة";
+      
+      const hasIDProof = formData.student_documents.some(doc => doc.document_type === "ID");
+      if (!hasIDProof) newErrors.id_proof = "Student ID Proof is required in documents | بطاقة هوية الطالب مطلوبة في المرفقات";
+      
       if (formData.student_documents.length === 0) newErrors.student_documents = "At least one document is required | يجب تحميل وثيقة واحدة على الأقل";
 
       // Birthday validation: reject today or future dates
@@ -362,6 +378,9 @@ const NewStudentRegistrationForm = () => {
       if (formData.passport_copy) {
         form.append("student_passport", formData.passport_copy);
       }
+      if (formData.house_photo) {
+        form.append("student_house_photo", formData.house_photo);
+      }
 
       // Attach guardian ID documents
       if (formData.father.id_document) {
@@ -467,7 +486,7 @@ const NewStudentRegistrationForm = () => {
             <div style="text-align: left">
               <p style="margin-bottom: 1rem">The student registration has been submitted successfully.</p>
               <div style="background: rgba(102, 42, 20, 0.05); padding: 15px; border-radius: 10px; border: 1px dashed #662a14;">
-                <p style="margin-bottom: 0.5rem"><strong>Student Name:</strong> <span style="color: #662a14">${result.data?.student?.en_first_name || ''} ${result.data?.student?.en_last_name || ''}</span></p>
+                <p style="margin-bottom: 0.5rem"><strong>Student Name:</strong> <span style="color: #662a14">${[result.data?.student?.en_first_name, result.data?.student?.en_middle_name, result.data?.student?.en_grandfather_name, result.data?.student?.en_last_name].filter(Boolean).join(' ')}</span></p>
                 <p style="margin-bottom: 0px"><strong>Admission Number:</strong> <span style="color: #662a14; font-family: monospace; font-weight: bold;">${result.data?.student?.admission_number || 'N/A'}</span></p>
               </div>
               <p style="font-size: 0.875rem; color: #6b7280; mt-4">Please keep this admission number for future reference.</p>
@@ -539,6 +558,7 @@ const NewStudentRegistrationForm = () => {
         has_special_needs: false,
         special_needs_details: "",
         passport_copy: null as File | null,
+        house_photo: null as File | null,
         relationship: "",
         father: { ...emptyGuardian },
         mother: { ...emptyGuardian },
@@ -630,6 +650,23 @@ const NewStudentRegistrationForm = () => {
       Swal.fire({
         title: 'Success!',
         text: 'Passport copy uploaded',
+        icon: 'success',
+        timer: 5000,
+        timerProgressBar: true,
+        confirmButtonText: 'OK'
+      });
+    }
+  };
+
+  const handleHousePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setFormData({
+        ...formData,
+        house_photo: e.target.files[0],
+      });
+      Swal.fire({
+        title: 'Success!',
+        text: 'House photo uploaded',
         icon: 'success',
         timer: 5000,
         timerProgressBar: true,
@@ -1062,24 +1099,7 @@ const NewStudentRegistrationForm = () => {
                     </div>
                   </div>
 
-                  {/* Passport Copy */}
-                  <div>
-                    <Label htmlFor="passport_copy">Passport Copy * | نسخة الجواز *</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="passport_copy"
-                        type="file"
-                        accept=".pdf,.jpg,.jpeg,.png"
-                        onChange={handlePassportUpload}
-                        className={`bg-white ${errors.passport_copy ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-200'}`}
-                        required
-                      />
-                      {errors.passport_copy && <p className="text-red-500 text-xs font-semibold">{errors.passport_copy}</p>}
-                      {formData.passport_copy && (
-                        <span className="text-sm">{formData.passport_copy.name}</span>
-                      )}
-                    </div>
-                  </div>
+
 
                   {/* English Name */}
                   <div className="space-y-2">
@@ -1096,10 +1116,9 @@ const NewStudentRegistrationForm = () => {
                         });
                       }}
                       placeholder="e.g. Ahmed"
-                      className={`rounded-xl shadow-sm ${errors.en_first_name ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-200 focus:ring-2 focus:ring-primary/20 transition-all'}`}
-                      required
+                      className={`rounded-xl shadow-sm ${errors.first_name || errors.en_first_name ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-200 focus:ring-2 focus:ring-primary/20 transition-all'}`}
                     />
-                    {errors.en_first_name && <p className="text-red-500 text-xs font-semibold mt-1">{errors.en_first_name}</p>}
+                    {(errors.first_name || errors.en_first_name) && <p className="text-red-500 text-xs font-semibold mt-1">{errors.first_name || errors.en_first_name}</p>}
                   </div>
 
                   <div className="space-y-2">
@@ -1117,10 +1136,9 @@ const NewStudentRegistrationForm = () => {
                       }
                       placeholder="أحمد"
                       dir="rtl"
-                      className={`rounded-xl shadow-sm text-right ${errors.ar_first_name ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-200 focus:ring-2 focus:ring-primary/20 transition-all'}`}
-                      required
+                      className={`rounded-xl shadow-sm text-right ${errors.first_name || errors.ar_first_name ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-200 focus:ring-2 focus:ring-primary/20 transition-all'}`}
                     />
-                    {errors.ar_first_name && <p className="text-red-500 text-xs font-semibold text-right mt-1">{errors.ar_first_name}</p>}
+                    {(errors.first_name || errors.ar_first_name) && <p className="text-red-500 text-xs font-semibold text-right mt-1">{errors.first_name || errors.ar_first_name}</p>}
                   </div>
 
                   <div className="space-y-2">
@@ -1137,8 +1155,9 @@ const NewStudentRegistrationForm = () => {
                         });
                       }}
                       placeholder="Father name in English"
-                      className="rounded-xl shadow-sm border-gray-200 focus:ring-2 focus:ring-primary/20 transition-all"
+                      className={`rounded-xl shadow-sm border-gray-200 focus:ring-2 focus:ring-primary/20 transition-all ${errors.middle_name ? 'border-red-500 ring-1 ring-red-500' : ''}`}
                     />
+                    {errors.middle_name && <p className="text-red-500 text-xs font-semibold mt-1">{errors.middle_name}</p>}
                   </div>
 
                   <div className="space-y-2">
@@ -1156,50 +1175,12 @@ const NewStudentRegistrationForm = () => {
                       }
                       placeholder="اسم الأب"
                       dir="rtl"
-                      className="rounded-xl shadow-sm text-right border-gray-200 focus:ring-2 focus:ring-primary/20 transition-all"
+                      className={`rounded-xl shadow-sm text-right border-gray-200 focus:ring-2 focus:ring-primary/20 transition-all ${errors.middle_name ? 'border-red-500 ring-1 ring-red-500' : ''}`}
                     />
+                    {errors.middle_name && <p className="text-red-500 text-xs font-semibold text-right mt-1">{errors.middle_name}</p>}
                   </div>
 
-                  {/* Last Name */}
-                  <div className="space-y-2">
-                    <Label htmlFor="en_last_name">
-                      Last Name (English) * | اسم العائلة (إنجليزي)
-                    </Label>
-                    <Input
-                      id="en_last_name"
-                      value={formData.en_last_name}
-                      onChange={(e) => {
-                        setFormData({
-                          ...formData,
-                          en_last_name: e.target.value,
-                        });
-                      }}
-                      placeholder="e.g. Khan"
-                      className={`rounded-xl shadow-sm ${errors.en_last_name ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-200 focus:ring-2 focus:ring-primary/20 transition-all'}`}
-                      required
-                    />
-                    {errors.en_last_name && <p className="text-red-500 text-xs font-semibold mt-1">{errors.en_last_name}</p>}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="ar_last_name">
-                      Last Name (Arabic) * | اسم العائلة (عربي)
-                    </Label>
-                    <Input
-                      id="ar_last_name"
-                      value={formData.ar_last_name}
-                      onChange={(e) =>
-                        setFormData({ ...formData, ar_last_name: e.target.value })
-                      }
-                      placeholder="خان"
-                      dir="rtl"
-                      className={`rounded-xl shadow-sm text-right ${errors.ar_last_name ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-200 focus:ring-2 focus:ring-primary/20 transition-all'}`}
-                      required
-                    />
-                    {errors.ar_last_name && <p className="text-red-500 text-xs font-semibold text-right mt-1">{errors.ar_last_name}</p>}
-                  </div>
-
-
+                  {/* Grandfather Name */}
                   <div className="space-y-2">
                     <Label htmlFor="en_grandfather_name">
                       Grandfather Name (English) | اسم الجد (إنجليزي)
@@ -1209,8 +1190,9 @@ const NewStudentRegistrationForm = () => {
                       value={formData.en_grandfather_name}
                       onChange={(e) => setFormData({ ...formData, en_grandfather_name: e.target.value })}
                       placeholder="Grandfather name in English"
-                      className="rounded-xl shadow-sm border-gray-200 focus:ring-2 focus:ring-primary/20 transition-all"
+                      className={`rounded-xl shadow-sm border-gray-200 focus:ring-2 focus:ring-primary/20 transition-all ${errors.grandfather_name ? 'border-red-500 ring-1 ring-red-500' : ''}`}
                     />
+                    {errors.grandfather_name && <p className="text-red-500 text-xs font-semibold mt-1">{errors.grandfather_name}</p>}
                   </div>
 
                   <div className="space-y-2">
@@ -1223,8 +1205,46 @@ const NewStudentRegistrationForm = () => {
                       onChange={(e) => setFormData({ ...formData, ar_grandfather_name: e.target.value })}
                       placeholder="اسم الجد"
                       dir="rtl"
-                      className="rounded-xl shadow-sm text-right border-gray-200 focus:ring-2 focus:ring-primary/20 transition-all"
+                      className={`rounded-xl shadow-sm text-right border-gray-200 focus:ring-2 focus:ring-primary/20 transition-all ${errors.grandfather_name ? 'border-red-500 ring-1 ring-red-500' : ''}`}
                     />
+                    {errors.grandfather_name && <p className="text-red-500 text-xs font-semibold text-right mt-1">{errors.grandfather_name}</p>}
+                  </div>
+
+                  {/* Last Name */}
+                  <div className="space-y-2">
+                    <Label htmlFor="en_last_name">
+                      Last Name / Family Name (English) * | اسم العائلة (إنجليزي)
+                    </Label>
+                    <Input
+                      id="en_last_name"
+                      value={formData.en_last_name}
+                      onChange={(e) => {
+                        setFormData({
+                          ...formData,
+                          en_last_name: e.target.value,
+                        });
+                      }}
+                      placeholder="e.g. Khan"
+                      className={`rounded-xl shadow-sm ${errors.last_name || errors.en_last_name ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-200 focus:ring-2 focus:ring-primary/20 transition-all'}`}
+                    />
+                    {(errors.last_name || errors.en_last_name) && <p className="text-red-500 text-xs font-semibold mt-1">{errors.last_name || errors.en_last_name}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="ar_last_name">
+                      Last Name / Family Name (Arabic) * | اسم العائلة (عربي)
+                    </Label>
+                    <Input
+                      id="ar_last_name"
+                      value={formData.ar_last_name}
+                      onChange={(e) =>
+                        setFormData({ ...formData, ar_last_name: e.target.value })
+                      }
+                      placeholder="خان"
+                      dir="rtl"
+                      className={`rounded-xl shadow-sm text-right ${errors.last_name || errors.ar_last_name ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-200 focus:ring-2 focus:ring-primary/20 transition-all'}`}
+                    />
+                    {(errors.last_name || errors.ar_last_name) && <p className="text-red-500 text-xs font-semibold text-right mt-1">{errors.last_name || errors.ar_last_name}</p>}
                   </div>
 
 
@@ -1521,6 +1541,42 @@ const NewStudentRegistrationForm = () => {
                     />
                   </div>
 
+                  <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="passport_copy">Passport Copy * | نسخة الجواز *</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id="passport_copy"
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png"
+                          onChange={handlePassportUpload}
+                          className={`bg-white ${errors.passport_copy ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-200'}`}
+                          required
+                        />
+                        {errors.passport_copy && <p className="text-red-500 text-xs font-semibold">{errors.passport_copy}</p>}
+                        {formData.passport_copy && (
+                          <span className="text-sm">{formData.passport_copy.name}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="house_photo">House Photo | صورة المنزل</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id="house_photo"
+                          type="file"
+                          accept="image/*"
+                          onChange={handleHousePhotoUpload}
+                          className="bg-white border-gray-200"
+                        />
+                        {formData.house_photo && (
+                          <span className="text-sm">{formData.house_photo.name}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="md:col-span-2">
                     <Label htmlFor="google_map_location_url">Google Maps URL | رابط خرائط جوجل</Label>
                     <Input
@@ -1602,6 +1658,11 @@ const NewStudentRegistrationForm = () => {
                 {errors.student_documents && (
                   <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-2 rounded-lg mb-4 text-sm font-medium animate-pulse">
                     {errors.student_documents}
+                  </div>
+                )}
+                {errors.id_proof && (
+                  <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-2 rounded-lg mb-4 text-sm font-medium animate-pulse">
+                    {errors.id_proof}
                   </div>
                 )}
 

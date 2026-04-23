@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, Calendar, List, FileSpreadsheet, Filter, Download, Users, TrendingUp, Search, X, Loader2, Edit, Eye } from "lucide-react";
+import { FileText, Calendar, List, FileSpreadsheet, Filter, Download, Users, TrendingUp, Search, X, Loader2, Edit, Eye, Clock, CheckCircle2 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { Input } from "@/components/ui/input";
@@ -43,12 +43,16 @@ const AccountAdminDashboard = () => {
     payment_method: "cash",
     cheque_number: "",
     transaction_number: "",
-    bank_name: ""
+    bank_name: "",
+    payment_link: "",
+    paid_by: "",
+    isOtherPayer: false
   });
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentError, setPaymentError] = useState("");
   const [availableInstallments, setAvailableInstallments] = useState<any[]>([]);
   const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null);
+  const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'completed'>('all');
 
   // Export Modal States
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -102,7 +106,10 @@ const AccountAdminDashboard = () => {
           payment_method: "cash",
           cheque_number: "",
           transaction_number: "",
-          bank_name: ""
+          bank_name: "",
+          payment_link: "",
+          paid_by: "",
+          isOtherPayer: false
         }));
       }
     }
@@ -126,58 +133,100 @@ const AccountAdminDashboard = () => {
       const processedStudents: any[] = [];
 
       students.forEach((student: any) => {
+        // Log if student is deleted
+        if (student.is_deleted) {
+          console.warn(`[Dashboard Audit] Student "${student.en_first_name} ${student.en_last_name}" is skipped because they are marked as DELETED.`);
+        }
+
         const ags = Array.isArray(student.financial_agreement) ? student.financial_agreement : [];
 
         // In "All" view, show one row per academic year for the student
         ags.forEach((ag: any) => {
           const currentYearId = ag.academic_year;
           const yearName = academicYears.find(y => y.id === currentYearId)?.name || currentYearId;
-          const uniqueKey = `${student.id}-${currentYearId}`;
+          // Use Financial Agreement ID as unique key to show all agreements (12 records)
+          const uniqueKey = ag.id;
 
-          // Skip if we already processed this student for this year
+          // Skip if we already processed this exact agreement (unlikely with ID but safe)
           if (studentMap.has(uniqueKey)) return;
           studentMap.set(uniqueKey, true);
 
-          const paymentHistory = (student.payment_history || []).filter((p: any) => p.academic_year === currentYearId);
+          const paymentHistory = (student.payment_history || []).filter((p: any) => p.financial_agreement === ag.id);
           const totalFees = parseFloat(ag.total_fees_omr || "0");
-          const initialPaid = parseFloat(ag.initial_paid_amount || "0");
-          const historyPaid = parseFloat(paymentHistory.reduce((sum: number, p: any) => sum + parseFloat(p.paid_amount || "0"), 0).toFixed(2));
-          const totalPaid = initialPaid + historyPaid;
-          const pendingAmount = parseFloat((totalFees - totalPaid).toFixed(2));
-          const paymentComplete = pendingAmount <= 0.01;
+
+          // Use Flag-Driven Calculation for Total Paid (STRICT BOOLEAN CHECK)
+          let calculatedTotalPaid = 0;
+          if (ag.first_installment_paid === true) calculatedTotalPaid += parseFloat(ag.initial_paid_amount || "0");
+          if (ag.second_installment_paid === true) calculatedTotalPaid += parseFloat(ag.installment2_amount || "0");
+          if (ag.third_installment_paid === true) calculatedTotalPaid += parseFloat(ag.installment3_amount || "0");
+          if (ag.fourth_installment_paid === true) calculatedTotalPaid += parseFloat(ag.installment4_amount || "0");
+
+          // If the final completion flag is true, ensure it represents the absolute total
+          if (ag.payment_completed === true) calculatedTotalPaid = totalFees;
+
+          const totalPaid = parseFloat(calculatedTotalPaid.toFixed(3));
+          const pendingAmount = parseFloat((totalFees - totalPaid).toFixed(3));
+          const paymentComplete = ag.payment_completed || pendingAmount <= 0.01;
+
+          const initialPaidValue = parseFloat(ag.initial_paid_amount || "0");
+
           const totalInstallments = ag.installment_plan === "one" ? 1 : ag.installment_plan === "two" ? 2 : 4;
+          const paidFlags = (ag.first_installment_paid ? 1 : 0) + 
+                          (ag.second_installment_paid ? 1 : 0) + 
+                          (ag.third_installment_paid ? 1 : 0) + 
+                          (ag.fourth_installment_paid ? 1 : 0);
+
+          const getPaidInstallmentsList = () => {
+            const list: string[] = [];
+            if (ag.first_installment_paid) list.push("1st");
+            if (ag.second_installment_paid) list.push("2nd");
+            if (ag.third_installment_paid) list.push("3rd");
+            if (ag.fourth_installment_paid) list.push("4th");
+            return list.length > 0 ? list.join(", ") : "None";
+          };
+
+          const installmentTypeText = ag.installment_plan === "one" ? "One-time" : 
+                             ag.installment_plan === "two" ? "2 Installments" : 
+                             ag.installment_plan === "four" ? "4 Installments" : ag.installment_plan;
 
           processedStudents.push({
             id: uniqueKey, // Unique ID for table keys
             originalId: student.id,
             admissionNumber: student.admission_number,
-            name: `${student.en_first_name || ""} ${student.en_last_name || ""}`.trim(),
-            nameAr: `${student.ar_first_name || ""} ${student.ar_last_name || ""}`.trim(),
+            name: `${student.en_first_name || ""} ${student.en_middle_name || ""} ${student.en_grandfather_name || ""} ${student.en_last_name || ""}`.replace(/\s+/g, ' ').trim(),
+            nameAr: `${student.ar_first_name || ""} ${student.ar_middle_name || ""} ${student.ar_grandfather_name || ""} ${student.ar_last_name || ""}`.replace(/\s+/g, ' ').trim(),
             grade: student.admission_class?.department_name || 'N/A',
             section: student.section?.name || '',
             status: student.is_active ? 'Active' : 'Inactive',
             totalFees,
             paidAmount: totalPaid,
-            pendingAmount: pendingAmount,
-            paymentStatus: paymentComplete ? "Complete" : `${paymentHistory.length} of ${totalInstallments} payments`,
+            // Use model balance_amount if it has a positive value or if payment is actually complete.
+            // Otherwise, fallback to calculation for existing/unitialized records.
+            pendingAmount: (ag.balance_amount > 0 || (totalPaid >= totalFees - 0.01))
+              ? parseFloat(ag.balance_amount.toString())
+              : parseFloat((totalFees - totalPaid).toFixed(2)),
+            initiallyPaid: initialPaidValue,
+            installmentType: installmentTypeText,
+            paidInstallments: getPaidInstallmentsList(),
+            paymentStatus: paymentComplete ? "Completed" : `${paidFlags} of ${totalInstallments} payments`,
             paymentComplete,
             paymentHistory,
             hasUnverifiedPayments: paymentHistory.some((p: any) => !p.is_verified_by_accountant),
-            financialAgreement: {
-              ...ag,
-              first_installment_paid: paymentHistory.some(p => p.payment_status === "first"),
-              second_installment_paid: paymentHistory.some(p => p.payment_status === "second"),
-              third_installment_paid: paymentHistory.some(p => p.payment_status === "third"),
-              fourth_installment_paid: totalInstallments === 4 ? paymentHistory.some(p => p.payment_status === "fourth") : undefined
-            },
+            financialAgreement: ag,
             academicYearId: currentYearId,
-            academicYear: yearName
+            academicYear: yearName,
+            originalStudentObj: student
           });
         });
       });
 
-      // Sort students: Primary by Admission Number (Asc), Secondary by Year (Desc)
+      // Sort students: Primary by Payment Status (Incomplete first), Secondary by Admission Number (Asc), Tertiary by Year (Desc)
       processedStudents.sort((a, b) => {
+        // Incomplete payments first (false < true)
+        if (a.paymentComplete !== b.paymentComplete) {
+          return a.paymentComplete ? 1 : -1;
+        }
+
         const numCompare = a.admissionNumber.localeCompare(b.admissionNumber);
         if (numCompare !== 0) return numCompare;
         return b.academicYear.localeCompare(a.academicYear);
@@ -227,19 +276,29 @@ const AccountAdminDashboard = () => {
   const filteredStudents = studentList.filter(student => {
     // 1. Check Year
     const matchesYear = selectedYear === 'all' || student.academicYearId === selectedYear;
-    
+
     // 2. Check Search (Name or Admission Number)
     const searchLow = searchQuery.toLowerCase().trim();
-    const matchesSearch = !searchLow || 
+    const matchesSearch = !searchLow ||
       (student.name || "").toLowerCase().includes(searchLow) ||
       (student.nameAr || "").toLowerCase().includes(searchLow) ||
       (student.admissionNumber || "").toLowerCase().includes(searchLow);
-      
+
     // 3. Check Class
     const matchesClass = selectedClass === 'all' || student.grade === selectedClass;
 
-    return matchesYear && matchesSearch && matchesClass;
+    // 4. Check Payment Status (Filter Cards)
+    const matchesStatus = filterStatus === 'all' ||
+      (filterStatus === 'pending' && !student.paymentComplete) ||
+      (filterStatus === 'completed' && student.paymentComplete);
+
+    return matchesYear && matchesSearch && matchesClass && matchesStatus;
   });
+
+  // Calculate counts for the filter cards based on the CURRENT filters
+  const totalStudentsCount = filteredStudents.length;
+  const pendingStudentsCount = filteredStudents.filter(s => !s.paymentComplete).length;
+  const completedStudentsCount = filteredStudents.filter(s => s.paymentComplete).length;
 
   const showStudentDetails = async (student: any) => {
     setSelectedStudent(student);
@@ -274,7 +333,10 @@ const AccountAdminDashboard = () => {
       payment_method: "cash",
       cheque_number: "",
       transaction_number: "",
-      bank_name: ""
+      bank_name: "",
+      payment_link: "",
+      paid_by: "",
+      isOtherPayer: false
     });
     setAvailableInstallments(installments);
     setIsPaymentModalOpen(true);
@@ -288,80 +350,9 @@ const AccountAdminDashboard = () => {
     setPaymentError("");
   };
 
-  const updatePaymentFlags = async (student, academicYearId, paymentStatus, paidAmount) => {
-    if (!student) {
-      console.error("Cannot update payment flags: Student data missing.");
-      return;
-    }
 
-    // --- NEW ROBUST LOGIC TO FIND THE AGREEMENT ---
-    let currentAgreement = null;
-    const agreementData = student.financialAgreement;
+  // updatePaymentFlags removed: logic migrated to backend models.py for robust automation.
 
-    if (Array.isArray(agreementData)) {
-      // Case 1: The data is an array, as originally expected.
-      currentAgreement = agreementData.find(a => a.academic_year === academicYearId);
-    } else if (agreementData && typeof agreementData === 'object') {
-      // Case 2: The data is a single object.
-
-      // We check if this single object's academic_year matches what we need.
-      if (agreementData.academic_year === academicYearId) {
-        currentAgreement = agreementData;
-      }
-    }
-    // --- END OF NEW LOGIC ---
-
-    if (!currentAgreement) {
-      // This will now only trigger if the data is truly missing or the ID doesn't match
-      console.error("No financial agreement found for the current academic year:", academicYearId);
-
-      return;
-    }
-
-    // The rest of the function remains the same...
-
-    const payload: any = {};
-    const statusToFieldMap = {
-      first: "first_installment_paid",
-      second: "second_installment_paid",
-      third: "third_installment_paid",
-      fourth: "fourth_installment_paid",
-      full: "payment_completed"
-    };
-    const fieldToUpdate = statusToFieldMap[paymentStatus];
-    if (fieldToUpdate) {
-      payload[fieldToUpdate] = true;
-    }
-
-    const remainingAmount = parseFloat(student.pendingAmount.toFixed(2));
-    const amountBeingPaid = parseFloat(paidAmount.toFixed(2));
-    const isCompleted = amountBeingPaid >= remainingAmount - 0.01;
-
-    if (isCompleted) {
-      payload.payment_completed = true;
-    }
-
-    if (Object.keys(payload).length === 0) {
-      return;
-    }
-
-    try {
-      const response = await axios.patch(
-        `${import.meta.env.VITE_API_BASE_URL}/students/update-payment-flag/${currentAgreement.id}/`,
-        payload,
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
-      );
-      if (response.data) {
-        console.log("Payment flags updated successfully with payload:", payload);
-      }
-    } catch (err) {
-      console.error("Failed to update payment flags:", err.response?.data || err.message);
-    }
-  };
 
   const handlePaymentSubmit = async (e) => {
     e.preventDefault();
@@ -387,7 +378,7 @@ const AccountAdminDashboard = () => {
 
       const remainingBeforeThis = parseFloat((totalFees - paidBeforeThis).toFixed(2));
       const isFinalPayment = remainingBeforeThis <= parseFloat(selectedInstallment.amount) + 0.01;
-      const amountToPay = isFinalPayment ? remainingBeforeThis : parseFloat(selectedInstallment.amount);
+      const amountToPay = parseFloat(paymentData.amount);
       const remainingAfterThis = parseFloat((totalFees - (paidBeforeThis + amountToPay)).toFixed(2));
 
       if (amountToPay <= 0) {
@@ -407,8 +398,23 @@ const AccountAdminDashboard = () => {
       if (paymentData.payment_method === 'cheque') {
         formData.append("cheque_number", paymentData.cheque_number);
         formData.append("bank_name", paymentData.bank_name);
-      } else if (paymentData.payment_method === 'visa') {
+      } else if (paymentData.payment_method === 'visa' || paymentData.payment_method === 'link') {
         formData.append("transaction_number", paymentData.transaction_number);
+      } else if (paymentData.payment_method === 'transfer') {
+        formData.append("transaction_number", paymentData.transaction_number);
+        formData.append("bank_name", paymentData.bank_name);
+      }
+
+      if (paymentData.payment_link) {
+        formData.append("payment_link", paymentData.payment_link);
+      }
+
+      if (paymentData.paid_by) {
+        formData.append("paid_by", paymentData.paid_by);
+      }
+
+      if (selectedStudent.financialAgreement?.id) {
+        formData.append("financial_agreement", selectedStudent.financialAgreement.id);
       }
 
       if (paymentData.paymentSlip) {
@@ -435,18 +441,13 @@ const AccountAdminDashboard = () => {
           confirmButtonText: 'OK'
         });
 
-        // *** NEW: Call the function to update payment flags ***
-        await updatePaymentFlags(
-          selectedStudent,
-          selectedStudent.academicYearId, // Pass the specific academic year ID
-          paymentData.paymentStatus,
-          amountToPay
-        );
+
+        // Logic removed: flags and installment re-balancing are now handled by the backend on save.
 
         // Refresh data and close modal as before
         // Refresh data and update current student details to show the new signature button
         await fetchStudentData('all');
-        
+
         // Re-fetch current student details to update the signature section immediately
         if (selectedStudent) {
           try {
@@ -460,7 +461,7 @@ const AccountAdminDashboard = () => {
             console.error("Error refreshing student details:", detailsError);
           }
         }
-        
+
         closeModal();
       } else {
         throw new Error(response.data.message || "Payment failed");
@@ -568,8 +569,9 @@ const AccountAdminDashboard = () => {
     if (agreement.installment_plan === "one") {
       return [{
         value: "full",
-        label: `Full Payment (${totalFees.toFixed(2)} OMR)`,
-        amount: Math.min(remainingAmount, totalFees).toFixed(2)
+        label: `Full Payment (${remainingAmount.toFixed(2)} OMR)`,
+        amount: remainingAmount.toFixed(2),
+        isFixed: false
       }];
     }
 
@@ -581,8 +583,9 @@ const AccountAdminDashboard = () => {
       if (!agreement.first_installment_paid) {
         payments.push({
           value: "first",
-          label: `First Installment (${inst1.toFixed(3)} OMR)`,
-          amount: Math.min(remainingAmount, inst1).toFixed(2)
+          label: `Initial Payment (${inst1.toFixed(3)} OMR)`,
+          amount: inst1.toFixed(2),
+          isFixed: false
         });
       }
 
@@ -590,7 +593,8 @@ const AccountAdminDashboard = () => {
         payments.push({
           value: "second",
           label: `Second Installment (${inst2.toFixed(3)} OMR)`,
-          amount: Math.min(remainingAmount, inst2).toFixed(2)
+          amount: inst2.toFixed(2),
+          isFixed: false
         });
       }
 
@@ -601,14 +605,18 @@ const AccountAdminDashboard = () => {
     if (agreement.installment_plan === "four") {
       const inst1 = parseFloat(agreement.installment1_amount || "0");
       const inst2 = parseFloat(agreement.installment2_amount || "0");
-      const inst3 = parseFloat(agreement.installment3_amount || "0");
-      const inst4 = parseFloat(agreement.installment4_amount || "0");
 
+      // Dynamic calculation for 3rd and 4th installments based on remaining balance
+      const paidSoFar = student.paidAmount; // already includes initiallyPaid from fetchStudentData
+      const remainingForFuture = totalFees - paidSoFar;
+
+      // Determine how many installments are left excluding the current one we are looking at
       if (!agreement.first_installment_paid) {
         payments.push({
           value: "first",
-          label: `First Installment (${inst1.toFixed(3)} OMR)`,
-          amount: Math.min(remainingAmount, inst1).toFixed(2)
+          label: `Initial Payment (${inst1.toFixed(3)} OMR)`,
+          amount: inst1.toFixed(2),
+          isFixed: false
         });
       }
 
@@ -616,23 +624,29 @@ const AccountAdminDashboard = () => {
         payments.push({
           value: "second",
           label: `Second Installment (${inst2.toFixed(3)} OMR)`,
-          amount: Math.min(remainingAmount, inst2).toFixed(2)
+          amount: inst2.toFixed(2),
+          isFixed: false
         });
       }
 
       if (agreement.second_installment_paid && !agreement.third_installment_paid) {
+        // Recalculate based on remaining balance / 2
+        const calculatedAmount = (remainingForFuture / 2);
         payments.push({
           value: "third",
-          label: `Third Installment (${inst3.toFixed(3)} OMR)`,
-          amount: Math.min(remainingAmount, inst3).toFixed(2)
+          label: `Third Installment (${calculatedAmount.toFixed(3)} OMR)`,
+          amount: calculatedAmount.toFixed(2),
+          isFixed: false
         });
       }
 
       if (agreement.third_installment_paid && !agreement.fourth_installment_paid) {
+        // Last installment is always the remaining balance
         payments.push({
           value: "fourth",
-          label: `Fourth Installment (${inst4.toFixed(3)} OMR)`,
-          amount: Math.min(remainingAmount, inst4).toFixed(2)
+          label: `Fourth Installment (${remainingForFuture.toFixed(3)} OMR)`,
+          amount: remainingForFuture.toFixed(2),
+          isFixed: false
         });
       }
 
@@ -642,8 +656,9 @@ const AccountAdminDashboard = () => {
     if (payments.length === 0 && remainingAmount > 0.01) {
       payments.push({
         value: "full",
-        label: `Balance Payment (${remainingAmount.toFixed(2)} OMR)`,
-        amount: remainingAmount.toFixed(2)
+        label: `Full Payment (${remainingAmount.toFixed(2)} OMR)`,
+        amount: remainingAmount.toFixed(2),
+        isFixed: false
       });
     }
 
@@ -749,12 +764,12 @@ const AccountAdminDashboard = () => {
   }
 
   const handleAttachSignatureAndDownload = async () => {
-    if (accountantSigPad.current?.isEmpty() || adminSigPad.current?.isEmpty()) {
+    if (adminSigPad.current?.isEmpty()) {
       Swal.fire({
-        title: 'Error!',
-        text: 'Both signatures are required.',
-        icon: 'error',
-        timer: 5000,
+        title: 'Empty Signature',
+        text: 'The Authorized Signatory signature is required.',
+        icon: 'warning',
+        timer: 3000,
         timerProgressBar: true,
         confirmButtonText: 'OK'
       });
@@ -787,35 +802,26 @@ const AccountAdminDashboard = () => {
       // === 2. LOAD THE PDF AND PREPARE SIGNATURE IMAGES ===
       const pdfDoc = await PDFDocument.load(pdfResponse.data);
 
-      const accountantSignatureUrl = accountantSigPad.current.toDataURL('image/png');
+      // Capture only the Authorized Signatory pad
       const adminSignatureUrl = adminSigPad.current.toDataURL('image/png');
 
-      const [accountantPngBytes, adminPngBytes] = await Promise.all([
-        fetch(accountantSignatureUrl).then((res) => res.arrayBuffer()),
+      const [adminPngBytes] = await Promise.all([
         fetch(adminSignatureUrl).then((res) => res.arrayBuffer()),
       ]);
 
-      const accountantImage = await pdfDoc.embedPng(accountantPngBytes);
       const adminImage = await pdfDoc.embedPng(adminPngBytes);
 
-      // === 3. EMBED THE SIGNATURES ONTO THE PDF ===
+      // === 3. EMBED THE SIGNATURE ONTO THE PDF ===
+      // Note: Accountant signature is now dynamically injected by the server inside the base PDF.
       const page = pdfDoc.getPages()[0];
       const { width, height } = page.getSize();
 
-      // Place signatures on top of footer labels (tuned for A5 Landscape: 595x421 pts)
-      // Accountant Signature (Center area)
-      page.drawImage(accountantImage, {
-        x: 245,     // Centered on "Accountant Sig." label
-        y: 65,      // Moved up to avoid overlap
-        width: 100,
-        height: 35,
-      });
-
-      // Authorized Signature (Right area)
+      // Place the payer's signature on the right side footer
+      // Authorized Signature (Right area - Payer's manual signature)
       page.drawImage(adminImage, {
-        x: 445,     // Aligned with "Authorized Signatory" label
-        y: 65,      // Moved up to avoid overlap
-        width: 100,
+        x: 255,      // Centered under the middle label
+        y: 80,       // Nudged down slightly for better placement
+        width: 90,   
         height: 35,
       });
 
@@ -936,6 +942,17 @@ const AccountAdminDashboard = () => {
 
   return (
     <div className="p-6 space-y-6 bg-gray-50 min-h-screen">
+      {/* Page Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">
+            Financial Accountant Admin | المحاسب المالي
+          </h1>
+          <p className="text-gray-500 mt-1">
+            Manage academic years, fee structures, and student financial records.
+          </p>
+        </div>
+      </div>
       {/* Main Action Tabs */}
       {/* *** MODIFICATION: Removed the tab container and the second button *** */}
       <div className="flex space-x-4 border-b border-gray-200">
@@ -956,11 +973,59 @@ const AccountAdminDashboard = () => {
         ) : (
           // *** MODIFICATION: This is now the only content view ***
           <div className="space-y-6">
-            {/* Financial Summary card removed as requested */}
+            {/* Filter Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Total Card */}
+              <Card
+                className={`cursor-pointer transition-all duration-200 border-2 ${filterStatus === 'all' ? 'border-blue-500 bg-blue-50/50 shadow-md' : 'border-transparent hover:border-blue-200'}`}
+                onClick={() => setFilterStatus('all')}
+              >
+                <CardContent className="p-4 flex items-center space-x-4">
+                  <div className={`p-3 rounded-xl ${filterStatus === 'all' ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-600'}`}>
+                    <Users className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-blue-600 uppercase tracking-wider">Total Students | إجمالي الطلاب</p>
+                    <p className="text-2xl font-black text-slate-800">{totalStudentsCount}</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Pending Card */}
+              <Card
+                className={`cursor-pointer transition-all duration-200 border-2 ${filterStatus === 'pending' ? 'border-amber-500 bg-amber-50/50 shadow-md' : 'border-transparent hover:border-amber-200'}`}
+                onClick={() => setFilterStatus('pending')}
+              >
+                <CardContent className="p-4 flex items-center space-x-4">
+                  <div className={`p-3 rounded-xl ${filterStatus === 'pending' ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-600'}`}>
+                    <Clock className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-amber-600 uppercase tracking-wider">Pending Payments | بانتظار الدفع</p>
+                    <p className="text-2xl font-black text-slate-800">{pendingStudentsCount}</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Completed Card */}
+              <Card
+                className={`cursor-pointer transition-all duration-200 border-2 ${filterStatus === 'completed' ? 'border-green-500 bg-green-50/50 shadow-md' : 'border-transparent hover:border-green-200'}`}
+                onClick={() => setFilterStatus('completed')}
+              >
+                <CardContent className="p-4 flex items-center space-x-4">
+                  <div className={`p-3 rounded-xl ${filterStatus === 'completed' ? 'bg-green-500 text-white' : 'bg-green-100 text-green-600'}`}>
+                    <CheckCircle2 className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-green-600 uppercase tracking-wider">Completed | المدفوعات المكتملة</p>
+                    <p className="text-2xl font-black text-slate-800">{completedStudentsCount}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
 
             {/* --- Student List / Billing Section --- */}
-            {/* *** MODIFICATION: This entire Card was moved here from the old 'billing' tab *** */}
-            <Card className="border-gray-200">
+            <Card className="border-gray-200 shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-lg">
                   Student List for {yearlyData[0]?.year} | قائمة الطلاب لسنة {yearlyData[0]?.year}
@@ -1018,10 +1083,10 @@ const AccountAdminDashboard = () => {
                       ))}
                     </select>
                   </div>
-                    {/* Section filter removed */}
+                  {/* Section filter removed */}
                   <div className="w-full sm:col-span-2 lg:col-span-1">
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       className="w-full h-10 text-gray-600 border-gray-200 hover:bg-gray-50"
                       onClick={() => {
                         setSelectedYear("all");
@@ -1057,11 +1122,13 @@ const AccountAdminDashboard = () => {
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Total Fees | الرسوم الكلية
                         </th>
+
+
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Paid | المدفوع
+                          Total Paid | إجمالي المدفوعات
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Pending | المتبقي
+                          Remaining Balance | الرصيد المتبقي
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Payment Status | حالة الدفع
@@ -1082,7 +1149,7 @@ const AccountAdminDashboard = () => {
                               className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 cursor-pointer hover:text-blue-600 hover:underline"
                               onClick={() => showStudentDetails(student)}
                             >
-                              {student.name}
+                              {student.name || student.nameAr}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                               {student.grade} {student.section ? `- ${student.section}` : ''}
@@ -1101,6 +1168,8 @@ const AccountAdminDashboard = () => {
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                               {student.totalFees.toFixed(2)} OMR
                             </td>
+
+
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">
                               {student.paidAmount.toFixed(2)} OMR
                             </td>
@@ -1108,15 +1177,20 @@ const AccountAdminDashboard = () => {
                               {student.pendingAmount.toFixed(2)} OMR
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
-                              <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${student.paymentComplete ?
-                                'bg-green-100 text-green-800' :
-                                (student.paidAmount > 0 ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800')
-                                }`}>
-                                {student.paymentComplete ? 'Complete' : student.paymentStatus}
-                              </span>
+                              <div className="flex flex-col space-y-1">
+                                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full w-fit ${student.paymentComplete ?
+                                  'bg-green-100 text-green-800' :
+                                  (student.paidAmount > 0 ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800')
+                                  }`}>
+                                  {student.paymentComplete ? 'Complete' : student.paymentStatus}
+                                </span>
+                                <span className="text-[10px] text-gray-400 font-medium ml-1">
+                                  {student.installmentType}
+                                </span>
+                              </div>
                               {student.hasUnverifiedPayments && (
-                                <span className="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
-                                  Un-verified
+                                <span className="mt-1 block px-2 py-0.5 text-[10px] leading-tight font-bold rounded bg-red-100 text-red-800 w-fit text-center">
+                                  Un-verified Payments
                                 </span>
                               )}
                             </td>
@@ -1248,11 +1322,14 @@ const AccountAdminDashboard = () => {
                               </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
+                              {/* Show Initial Paid Amount as the first entry if it exists */}
                               {selectedStudent.paymentHistory.map((payment: any) => (
                                 <tr key={payment.id}>
                                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{payment.date_of_payment}</td>
                                   <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">{payment.paid_amount} OMR</td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{payment.payment_status}</td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {payment.payment_status === 'first' ? 'initial' : payment.payment_status}
+                                  </td>
                                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                     {payment.is_verified_by_accountant ? (
                                       <div className="flex space-x-2">
@@ -1313,7 +1390,16 @@ const AccountAdminDashboard = () => {
                     </Card>
                     <Card>
                       <CardHeader>
-                        <CardTitle className="text-sm font-medium">Amount Paid</CardTitle>
+                        <CardTitle className="text-sm font-medium">Initial Paid</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="text-xl text-blue-600">{selectedStudent.initiallyPaid.toFixed(2)} OMR</p>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-sm font-medium">Installments Paid</CardTitle>
                       </CardHeader>
                       <CardContent>
                         <p className="text-xl text-green-600">{selectedStudent.paidAmount.toFixed(2)} OMR</p>
@@ -1321,7 +1407,7 @@ const AccountAdminDashboard = () => {
                     </Card>
                     <Card>
                       <CardHeader>
-                        <CardTitle className="text-sm font-medium">Pending Amount</CardTitle>
+                        <CardTitle className="text-sm font-medium">Remaining Balance</CardTitle>
                       </CardHeader>
                       <CardContent>
                         <p className={`text-xl ${selectedStudent.pendingAmount > 0 ? 'text-red-600' : 'text-gray-600'
@@ -1350,8 +1436,8 @@ const AccountAdminDashboard = () => {
                   Record Payment for {selectedStudent?.name}
                 </DialogTitle>
                 <DialogDescription>
-                  {selectedStudent?.financialAgreement.installment_plan === "one"
-                    ? "Full payment required"
+                  {selectedStudent?.pendingAmount <= 1
+                    ? "Remaining balance payment"
                     : `${selectedStudent?.financialAgreement.installment_plan}-installment plan`}
                 </DialogDescription>
               </DialogHeader>
@@ -1364,11 +1450,11 @@ const AccountAdminDashboard = () => {
                     <span className="font-medium">{selectedStudent?.admissionNumber}</span>
                     <span>Total Fees:</span>
                     <span className="font-medium">{selectedStudent?.totalFees.toFixed(2)} OMR</span>
-                    <span>Paid Amount:</span>
+                    <span>Total Paid:</span>
                     <span className="font-medium text-green-600">{selectedStudent?.paidAmount.toFixed(2)} OMR</span>
-                    <span>Pending Amount:</span>
+                    <span>Remaining Balance:</span>
                     <span className="font-medium text-red-600">
-                      {(selectedStudent?.totalFees - selectedStudent?.paidAmount).toFixed(2)} OMR
+                      {selectedStudent?.pendingAmount.toFixed(2)} OMR
                     </span>
                   </div>
                 </div>
@@ -1417,7 +1503,9 @@ const AccountAdminDashboard = () => {
                       >
                         <option value="cash">Cash | نقداً</option>
                         <option value="cheque">Cheque | شيك</option>
-                        <option value="visa">Visa/Card | فيزا / بطاقة</option>
+                        <option value="visa">Visa Card | فيزا / بطاقة</option>
+                        <option value="transfer">Account Transfer | تحويل بنكي</option>
+                        <option value="link">Link | الرابط</option>
                       </select>
                     </div>
 
@@ -1459,32 +1547,143 @@ const AccountAdminDashboard = () => {
                       </div>
                     )}
 
-                    <div className="space-y-2">
-                      <Label htmlFor="amount">Amount (OMR)</Label>
-                      <Input
-                        id="amount"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        max={(selectedStudent?.totalFees - selectedStudent?.paidAmount).toFixed(2)}
-                        value={paymentData.amount}
-                        onChange={(e) => {
-                          const maxAmount = selectedStudent?.totalFees - selectedStudent?.paidAmount;
-                          let enteredAmount = parseFloat(e.target.value) || 0;
-                          // Ensure exactly 2 decimal places
-                          enteredAmount = parseFloat(enteredAmount.toFixed(2));
-                          setPaymentData({
-                            ...paymentData,
-                            amount: Math.min(enteredAmount, maxAmount).toFixed(2)
-                          });
-                        }}
-                        required
-                        disabled={availableInstallments.length === 0}
-                      />
-                      <p className="text-xs text-gray-500">
-                        Maximum allowed: {(selectedStudent?.totalFees - selectedStudent?.paidAmount).toFixed(2)} OMR
-                      </p>
+                    {paymentData.payment_method === 'link' && (
+                      <div className="space-y-2">
+                        <Label htmlFor="payment_link">Payment Link URL</Label>
+                        <Input
+                          id="payment_link"
+                          type="url"
+                          value={paymentData.payment_link}
+                          onChange={(e) => setPaymentData({ ...paymentData, payment_link: e.target.value })}
+                          placeholder="https://..."
+                          required
+                        />
+                        <p className="text-xs text-gray-500">Paste the full payment Link URL here</p>
+                      </div>
+                    )}
+
+                    {paymentData.payment_method === 'transfer' && (
+                      <>
+                        <div className="space-y-2">
+                          <Label htmlFor="bank_name">Bank Name</Label>
+                          <Input
+                            id="bank_name"
+                            value={paymentData.bank_name}
+                            onChange={(e) => setPaymentData({ ...paymentData, bank_name: e.target.value })}
+                            placeholder="Enter bank name"
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="transaction_number">Transaction/Reference Number</Label>
+                          <Input
+                            id="transaction_number"
+                            value={paymentData.transaction_number}
+                            onChange={(e) => setPaymentData({ ...paymentData, transaction_number: e.target.value })}
+                            placeholder="Enter transaction number"
+                            required
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    <div className="space-y-4 pt-2 border-t border-gray-100">
+                      <div className="space-y-2">
+                        <Label>Who is paying? | من القائم بالدفع؟</Label>
+                        <select
+                          className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500"
+                          value={paymentData.isOtherPayer ? "other" : paymentData.paid_by}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === "other") {
+                              setPaymentData({ ...paymentData, isOtherPayer: true, paid_by: "" });
+                            } else {
+                              setPaymentData({ ...paymentData, isOtherPayer: false, paid_by: val });
+                            }
+                          }}
+                          required
+                        >
+                          <option value="">Select Payer | اختر القائم بالدفع</option>
+                          {selectedStudent.originalStudentObj?.father?.name_en && (
+                            <option value={selectedStudent.originalStudentObj.father.name_en}>
+                              Father: {selectedStudent.originalStudentObj.father.name_en}
+                            </option>
+                          )}
+                          {selectedStudent.originalStudentObj?.mother?.name_en && (
+                            <option value={selectedStudent.originalStudentObj.mother.name_en}>
+                              Mother: {selectedStudent.originalStudentObj.mother.name_en}
+                            </option>
+                          )}
+                          {selectedStudent.originalStudentObj?.guardian?.name_en &&
+                            selectedStudent.originalStudentObj?.guardian?.id !== selectedStudent.originalStudentObj?.father?.id &&
+                            selectedStudent.originalStudentObj?.guardian?.id !== selectedStudent.originalStudentObj?.mother?.id && (
+                              <option value={selectedStudent.originalStudentObj.guardian.name_en}>
+                                Relative: {selectedStudent.originalStudentObj.guardian.name_en}
+                              </option>
+                            )}
+                          <option value={selectedStudent.name}>
+                            Student: {selectedStudent.name}
+                          </option>
+                          <option value="other">Other | آخـر</option>
+                        </select>
+                      </div>
+
+                      {paymentData.isOtherPayer && (
+                        <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                          <Label htmlFor="other_payer_name">Other Payer Name | اسم القائم بالدفع</Label>
+                          <Input
+                            id="other_payer_name"
+                            value={paymentData.paid_by}
+                            onChange={(e) => setPaymentData({ ...paymentData, paid_by: e.target.value })}
+                            placeholder="Enter name..."
+                            required
+                          />
+                        </div>
+                      )}
                     </div>
+
+                    {(() => {
+                      const plan = selectedStudent.financialAgreement?.installment_plan;
+                      const type = paymentData.paymentStatus;
+
+                      // User Rules for Read-Only (Fixed Values):
+                      const isFixed =
+                        type === 'full' || // Matches getAvailablePayments values
+                        type === 'first' ||
+                        (plan === 'two' && type === 'second') ||
+                        (plan === 'four' && type === 'fourth');
+
+                      return (
+                        <div className="space-y-2">
+                          <Label htmlFor="amount">Amount (OMR)</Label>
+                          <Input
+                            id="amount"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max={(selectedStudent?.totalFees - selectedStudent?.paidAmount).toFixed(2)}
+                            value={paymentData.amount}
+                            onChange={(e) => {
+                              if (isFixed) return; // Prevent change if fixed
+                              const maxAmount = selectedStudent?.totalFees - selectedStudent?.paidAmount;
+                              let enteredAmount = parseFloat(e.target.value) || 0;
+                              enteredAmount = parseFloat(enteredAmount.toFixed(2));
+                              setPaymentData({
+                                ...paymentData,
+                                amount: Math.min(enteredAmount, maxAmount).toFixed(2)
+                              });
+                            }}
+                            required
+                            readOnly={isFixed}
+                            className={isFixed ? "bg-gray-100 cursor-not-allowed font-semibold" : ""}
+                            disabled={availableInstallments.length === 0}
+                          />
+                          <p className="text-xs text-gray-500">
+                            {isFixed ? "Fixed amount for this installment." : `Maximum allowed: ${(selectedStudent?.totalFees - selectedStudent?.paidAmount).toFixed(2)} OMR`}
+                          </p>
+                        </div>
+                      );
+                    })()}
 
                     <div className="space-y-2">
                       <Label htmlFor="paymentSlip">Payment Slip (Optional)</Label>
@@ -1551,29 +1750,20 @@ const AccountAdminDashboard = () => {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
-              {/* Accountant Signature */}
-              <div className="space-y-2">
-                <Label htmlFor="accountant-sig">Accountant Signature</Label>
-                <div className="border rounded-md">
-                  <SignatureCanvas
-                    ref={accountantSigPad}
-                    canvasProps={{ className: 'w-full h-32' }}
-                  />
+            <div className="py-4 flex flex-col items-center">
+              {/* Authorized Signatory (Manual Capture for Payer) */}
+              <div className="space-y-2 w-full max-w-md">
+                <div className="flex justify-between items-center">
+                  <Label htmlFor="admin-sig">Authorized Signatory (Payer's Signature)</Label>
+                  <Button size="sm" variant="ghost" className="text-red-500" onClick={() => adminSigPad.current?.clear()}>Clear</Button>
                 </div>
-                <Button size="sm" variant="ghost" onClick={() => accountantSigPad.current?.clear()}>Clear</Button>
-              </div>
-
-              {/* Authorized Signatory */}
-              <div className="space-y-2">
-                <Label htmlFor="admin-sig">Authorized Signatory</Label>
-                <div className="border rounded-md">
+                <div className="border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
                   <SignatureCanvas
                     ref={adminSigPad}
-                    canvasProps={{ className: 'w-full h-32' }}
+                    canvasProps={{ className: 'w-full h-40 cursor-crosshair' }}
                   />
                 </div>
-                <Button size="sm" variant="ghost" onClick={() => adminSigPad.current?.clear()}>Clear</Button>
+                <p className="text-xs text-gray-500 text-centeritalic">Please ask the payer to sign in the box above.</p>
               </div>
             </div>
 

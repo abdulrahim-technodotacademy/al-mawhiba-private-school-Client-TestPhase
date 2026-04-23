@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { LogOut, Home, User, LayoutDashboard, Globe, ChevronLeft } from "lucide-react";
+import { LogOut, Home, User, LayoutDashboard, Globe, ChevronLeft, Signature as SignatureIcon } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import SignatureManagementModal from "./SignatureManagementModal";
 
 interface UserData {
   first_name: string;
@@ -28,6 +29,7 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [userData, setUserData] = useState<UserData | null>(null);
+  const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
 
   useEffect(() => {
     const userDataString = localStorage.getItem("userData");
@@ -120,6 +122,14 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
+                    onClick={() => setIsSignatureModalOpen(true)}
+                    className="cursor-pointer py-3 rounded-md hover:bg-gray-50 focus:bg-gray-50 group"
+                  >
+                    <SignatureIcon className="h-4 w-4 mr-3 text-gray-500 group-hover:text-[rgb(102,42,20)] transition-colors" />
+                    <span className="font-medium">Manage Signature | إدارة التوقيع</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
                     onClick={handleLogout}
                     className="cursor-pointer py-3 rounded-md text-red-600 hover:bg-red-50 focus:bg-red-50 focus:text-red-600 group"
                   >
@@ -139,6 +149,10 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
           {children}
         </div>
       </main>
+      <SignatureManagementModal 
+        isOpen={isSignatureModalOpen} 
+        onClose={() => setIsSignatureModalOpen(false)} 
+      />
     </div>
   );
 };

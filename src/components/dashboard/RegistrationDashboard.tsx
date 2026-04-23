@@ -55,13 +55,24 @@ type Student = {
   isDraft?: boolean;
   registrationDate: string;
   isNewRegistration?: boolean;
+  isPromoted?: boolean;
+  hasCurrentAgreement?: boolean;
   guardian?: {
+    id?: string;
     name_en: string;
     name_ar: string;
-    phone: string;
+    phone1: string;
+    phone2?: string;
     relationship: string;
     national_id: string;
+    work_phone?: string;
+    occupation?: string;
+    workplace?: string;
   };
+  father?: any;
+  mother?: any;
+  relative?: any;
+  relationship?: string;
   searchablePhones?: string;
   admission_class?: {
     id: string,
@@ -175,8 +186,8 @@ const loadStudents = async () => {
       const studentsData: Student[] = result.data.map((student: any, index: number) => ({
       id: student.id,
       admission_number: student.admission_number,
-      name_en: `${student.en_first_name} ${student.en_middle_name ?? ""} ${student.en_last_name}`.trim(),
-      name_ar: `${student.ar_first_name} ${student.ar_middle_name ?? ""} ${student.ar_last_name}`.trim(),
+      name_en: `${student.en_first_name || ""} ${student.en_middle_name || ""} ${student.en_grandfather_name || ""} ${student.en_last_name || ""}`.replace(/\s+/g, ' ').trim(),
+      name_ar: `${student.ar_first_name || ""} ${student.ar_middle_name || ""} ${student.ar_grandfather_name || ""} ${student.ar_last_name || ""}`.replace(/\s+/g, ' ').trim(),
       date_of_birth: student.date_of_birth,
       gender: student.gender === "M" ? "Male" : "Female",
       nationality: student.nationality,
@@ -189,8 +200,14 @@ const loadStudents = async () => {
       status: student.is_draft ? "draft" : (student.is_verified_registration_officer ? "verified" : "pending"),
       isDraft: student.is_draft,
       registrationDate: student.admission_date || student.created_at || (student.other_datas?.admission_date) || "N/A",
-      isNewRegistration: true,
+      isNewRegistration: !student.is_promoted,
+      isPromoted: student.is_promoted,
+      hasCurrentAgreement: student.has_current_agreement,
       guardian: student.guardian,
+      father: student.father,
+      mother: student.mother,
+      relative: student.relative,
+      relationship: student.relationship || student.guardian?.relationship,
       searchablePhones: [
         student.guardian?.phone1,
         student.guardian?.phone2,
@@ -414,20 +431,10 @@ const rejectStudent = async (studentId: string) => {
 
 
 
-const promoteStudent = async (studentId: string, newClass: string, newSection: string) => {
+const promoteStudent = async (studentId: string, payload: any) => {
   const token = localStorage.getItem("accessToken");
   
-  // Validate selections
-  if (!newClass || !newSection) {
-    toast({
-      title: "Error",
-      description: "Please select both class and section",
-      variant: "destructive",
-    });
-    return;
-  }
-
-  setPromotingStudentId(studentId); // Set promoting student ID
+  setPromotingStudentId(studentId);
 
   try {
     const promoteRes = await fetch(
@@ -438,34 +445,32 @@ const promoteStudent = async (studentId: string, newClass: string, newSection: s
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          admission_class: newClass,
-          section: newSection,
-        }),
+        body: JSON.stringify(payload),
       }
     );
 
-    if (!promoteRes.ok) throw new Error("Failed to promote");
+    if (!promoteRes.ok) {
+      const errorData = await promoteRes.json();
+      throw new Error(errorData.message || "Failed to promote");
+    }
 
     toast({
       title: "Success! 🎉",
-      description: "Student has been promoted successfully. Refreshing data...",
+      description: "Student has been promoted successfully with yearly record.",
       variant: "default",
       className: "bg-green-600 text-white border-none font-bold",
     });
 
-    // Provide immediate feedback by refreshing the lists
     await loadStudents();
-
   } catch (err) {
     console.error(err);
     toast({
       title: "Error",
-      description: "Failed to complete promotion process",
+      description: err instanceof Error ? err.message : "Failed to complete promotion process",
       variant: "destructive",
     });
   } finally {
-    setPromotingStudentId(null); // Reset promoting student ID
+    setPromotingStudentId(null);
   }
 };
 const handleYearChange = (yearValue: string) => {
@@ -515,8 +520,9 @@ const filteredStudents = students.filter((student) => {
   if (activeTab === 'promotion') {
     const matchesClass = !selectedClass || student.currentClass === selectedClass;
     const matchesSection = !selectedFilterSection || student.currentSection === selectedFilterSection;
+    const isVerified = student.status === 'verified';
 
-     return matchesClass && matchesSection;
+     return isVerified && matchesClass && matchesSection;
   }
   
   return true; // Should not be reached if a tab is active
@@ -777,7 +783,7 @@ const filteredStudents = students.filter((student) => {
                         className="px-6 py-5 cursor-pointer hover:underline hover:text-blue-600 whitespace-nowrap border-b border-gray-100"
                         onClick={() => navigate(`/student/${student.id}?tab=${activeTab}&status=${verificationStatus}`)}
                       >
-                        <div className="font-semibold text-gray-900">{student.name_en}</div>
+                        <div className="font-semibold text-gray-900">{student.name_en || student.name_ar}</div>
                         <div className="flex items-center gap-2 mt-1">
                           <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border ${
                             student.status === "verified" ? "bg-green-50 text-green-700 border-green-100" :
@@ -952,8 +958,6 @@ const filteredStudents = students.filter((student) => {
                   <TableHead className="px-6 py-4 border-b">Admission ID</TableHead>
                   <TableHead className="px-6 py-4 border-b">Student Name</TableHead>
                   <TableHead className="px-6 py-4 border-b">Current Class</TableHead>
-                  <TableHead className="px-6 py-4 border-b">Next Class</TableHead>
-                  <TableHead className="px-6 py-4 border-b">Next Section</TableHead>
                   <TableHead className="px-6 py-4 text-right border-b">Action</TableHead>
                 </TableRow>
               </TableHeader>
@@ -967,7 +971,7 @@ const filteredStudents = students.filter((student) => {
                       className="px-6 py-5 cursor-pointer hover:underline hover:text-blue-600 whitespace-nowrap border-b border-gray-100"
                       onClick={() => navigate(`/student/${student.id}?tab=${activeTab}&status=${verificationStatus}`)}
                     >
-                      <div className="font-semibold text-gray-900">{student.name_en}</div>
+                      <div className="font-semibold text-gray-900">{student.name_en || student.name_ar}</div>
                       <div className="flex items-center gap-2 mt-1">
                         <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border ${
                           student.status === "verified" ? "bg-green-50 text-green-700 border-green-100" :
@@ -976,7 +980,11 @@ const filteredStudents = students.filter((student) => {
                         }`}>
                           {student.status}
                         </span>
-                        {student.isNewRegistration && (
+                        {student.isPromoted ? (
+                          <span className="px-2 py-0.5 bg-orange-50 text-orange-700 text-[9px] font-bold uppercase rounded-full border border-orange-100">
+                            Promoted
+                          </span>
+                        ) : (
                           <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[9px] font-bold uppercase rounded-full border border-blue-100">
                             New
                           </span>
@@ -986,91 +994,27 @@ const filteredStudents = students.filter((student) => {
                     <TableCell className="px-6 py-5 whitespace-nowrap text-sm font-medium text-gray-600 border-b border-gray-100">
                       {student.currentClass} <span className="text-gray-400 font-normal">{student.currentSection}</span>
                     </TableCell>
-                    <TableCell className="px-6 py-5 border-b border-gray-100">
-                      <Select
-                        value={student.selectedDepartment || ""}
-                        onValueChange={(value) => {
-                          const updatedStudents = students.map((s) =>
-                            s.id === student.id
-                              ? {
-                                  ...s,
-                                  selectedDepartment: value,
-                                  filteredSections: sections.filter(
-                                    (sec) => sec.department === value
-                                  ),
-                                  selectedSection: "", // reset section
-                                }
-                              : s
-                          );
-                          setStudents(updatedStudents);
-                        }}
-                      >
-                        <SelectTrigger className="w-[140px] h-9 text-[11px] font-semibold bg-white border-gray-200 focus:ring-blue-500/10">
-                          <SelectValue placeholder="To Class" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {departments.map((dept) => (
-                            <SelectItem key={dept.id} value={dept.id} className="text-xs">
-                              {dept.department_name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell className="px-6 py-5 border-b border-gray-100">
-                      <Select
-                        value={student.selectedSection || ""}
-                        onValueChange={(value) => {
-                          const updatedStudents = students.map((s) =>
-                            s.id === student.id
-                              ? { ...s, selectedSection: value }
-                              : s
-                          );
-                          setStudents(updatedStudents);
-                        }}
-                      >
-                        <SelectTrigger className="w-[120px] h-9 text-[11px] font-semibold bg-white border-gray-200 focus:ring-blue-500/10">
-                          <SelectValue placeholder="To Section" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(student.filteredSections || []).map((sec) => (
-                            <SelectItem key={sec.id} value={sec.id} className="text-xs">
-                              {sec.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
                     <TableCell className="px-6 py-5 text-right whitespace-nowrap border-b border-gray-100">
                       <Button
-                        variant="ghost"
                         size="sm"
-                        onClick={() => navigate(`/student/${student.id}?tab=${activeTab}&status=${verificationStatus}`)}
-                        className="h-8 text-blue-600 hover:bg-blue-50 font-semibold"
-                      >
-                        Details
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={async () => {
-                          await promoteStudent(
-                            student.id,
-                            student.selectedDepartment,
-                            student.selectedSection
-                          );
-                        }}
+                        onClick={() => navigate(`/student/promote/${student.id}`)}
                         disabled={
                           promotingStudentId !== null ||
                           student.status !== "verified" ||
-                          !student.selectedDepartment ||
-                          !student.selectedSection
+                          (activeTab === 'promotion' && !student.hasCurrentAgreement)
                         }
-                        className="h-8 bg-blue-600 hover:bg-blue-700 text-white ml-2 shadow-sm font-semibold"
+                        className={`h-8 ml-2 shadow-sm font-bold px-4 transition-all hover:scale-105 active:scale-95 ${
+                          !student.hasCurrentAgreement && activeTab === 'promotion'
+                            ? "bg-gray-400 cursor-not-allowed"
+                            : "bg-blue-600 hover:bg-blue-700 text-white"
+                        }`}
                       >
                         {promotingStudentId === student.id ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (!student.hasCurrentAgreement && activeTab === 'promotion') ? (
+                          "Already Promoted / Pending Agreement"
                         ) : (
-                          "Promote"
+                          "Start Promotion Workflow"
                         )}
                       </Button>
                     </TableCell>
@@ -1099,11 +1043,11 @@ const filteredStudents = students.filter((student) => {
         </div>
       </CardContent>
     </Card>
-  </div>
+    </div>
 
-<div className={activeTab === "new" ? "block" : "hidden"}>
-  <NewStudentRegistrationForm onSuccess={() => loadStudents()} />
-</div>
+    <div className={activeTab === "new" ? "block" : "hidden"}>
+      <NewStudentRegistrationForm />
+    </div>
   </div>
 </div>
   );

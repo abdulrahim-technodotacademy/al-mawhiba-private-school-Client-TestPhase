@@ -18,6 +18,7 @@ import LoginModal from "./components/auth/LoginModal";
 import NewStudentRegistrationForm from "./components/dashboard/NewStudentRegistrationForm";
 import { RoleRouteWrapper } from "./components/auth/RoleRouteWrapper";
 import StudentDetails from "./pages/dashboard/StudentDetails";
+import StudentPromotion from "./pages/dashboard/StudentPromotion";
 import PublicRegistration from "./pages/PublicRegistration";
 import { TokenService } from "./services/tokenService";
 import { useEffect } from "react";
@@ -99,6 +100,7 @@ const App = () => {
               />
               <Route path="/student/addmission" element={<NewStudentRegistrationForm />} />
               <Route path="/student/:id" element={<StudentDetails />} />
+              <Route path="/student/promote/:id" element={<StudentPromotion />} />
               <Route path="/dashboard/not-authorized" element={<NotAuthorized />} />
             </Route>
             

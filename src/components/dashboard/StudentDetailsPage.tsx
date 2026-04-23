@@ -35,6 +35,7 @@ import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
 import { countries } from "countries-list";
 import Swal from "sweetalert2";
+import PromoteStudentModal from "./PromoteStudentModal";
 
 // Updated to match registration form
 const DOCUMENT_TYPES = [
@@ -246,6 +247,7 @@ function StudentDetailsPage() {
     const [isDeleting, setIsDeleting] = useState<string | null>(null);
     const [isReplacing, setIsReplacing] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [isPromoteModalOpen, setIsPromoteModalOpen] = useState(false);
 
     // Countries list for dropdown
     const countryList = Object.entries(countries).map(([code, country]) => ({
@@ -1202,6 +1204,49 @@ function StudentDetailsPage() {
         return true;
     }
 
+    const handlePromoteSubmit = async (payload: any) => {
+        if (!student) return;
+        try {
+            const token = localStorage.getItem("accessToken");
+            const res = await fetch(
+                `${import.meta.env.VITE_API_BASE_URL}/students/students/promote/${student.id}/`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify(payload),
+                }
+            );
+
+            if (!res.ok) {
+                const errorData = await res.json();
+                throw new Error(errorData.message || "Failed to promote");
+            }
+
+            await Swal.fire({
+                title: 'Success! 🎉',
+                text: 'Student has been promoted successfully with yearly record.',
+                icon: 'success',
+                timer: 3000,
+                confirmButtonText: 'OK'
+            });
+
+            // Reload student data to reflect changes
+            await fetchStudent();
+            setIsPromoteModalOpen(false);
+        } catch (err) {
+            console.error("Promotion failed:", err);
+            Swal.fire({
+                title: 'Error!',
+                text: err instanceof Error ? err.message : "Promotion failed",
+                icon: 'error',
+                confirmButtonText: 'OK'
+            });
+        }
+    };
+
     if (loading) {
         return <div className="flex justify-center p-8">Loading...</div>;
     }
@@ -1217,6 +1262,14 @@ function StudentDetailsPage() {
                 <div className="flex gap-2">
                     {!isEditing && student.status !== 'draft' && (
                         <>
+                            <Button
+                                variant="outline"
+                                onClick={() => navigate(`/student/promote/${id}`)}
+                                className="bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+                            >
+                                <UserPlus className="w-4 h-4 mr-2" />
+                                Promote | ترقية
+                            </Button>
                             <Button
                                 variant="outline"
                                 onClick={() => setIsEditing(true)}
@@ -1437,7 +1490,7 @@ function StudentDetailsPage() {
 
                                 {/* Name Row 1: First Name */}
                                 <div className="space-y-1">
-                                    <Label className="flex items-center gap-1 text-xs">First Name (English) {isEditing && <span className="text-red-500">*</span>}</Label>
+                                    <Label className="flex items-center gap-1 text-xs">STUDENT NAME (English) {isEditing && <span className="text-red-500">*</span>}</Label>
                                     {isEditing ? (
                                         <>
                                             <Input
@@ -1451,7 +1504,7 @@ function StudentDetailsPage() {
                                 </div>
 
                                 <div className="space-y-1 text-right" dir="rtl">
-                                    <Label className="flex items-center gap-1 justify-end text-xs">الاسم الأول (عربي) {isEditing && <span className="text-red-500">*</span>}</Label>
+                                    <Label className="flex items-center gap-1 justify-end text-xs">STUDENT NAME | الاسم الأول (عربي) {isEditing && <span className="text-red-500">*</span>}</Label>
                                     {isEditing ? (
                                         <>
                                             <Input
@@ -1466,14 +1519,14 @@ function StudentDetailsPage() {
 
                                 {/* Name Row 2: Middle Name / Father Name */}
                                 <div className="space-y-1">
-                                    <Label className="text-xs">Middle Name / Father Name (English)</Label>
+                                    <Label className="text-xs">FATHER NAME (English)</Label>
                                     {isEditing ? (
                                         <Input value={student.en_middle_name} onChange={(e) => handleChange("en_middle_name", e.target.value)} className="h-10 rounded-lg border-gray-200" />
                                     ) : <p className="text-gray-900 font-medium py-1">{student.en_middle_name || "-"}</p>}
                                 </div>
 
                                 <div className="space-y-1 text-right" dir="rtl">
-                                    <Label className="flex justify-end text-xs text-right">اسم الأب / الجد (عربي)</Label>
+                                    <Label className="flex justify-end text-xs text-right">FATHER NAME | اسم الأب (عربي)</Label>
                                     {isEditing ? (
                                         <Input value={student.ar_middle_name} onChange={(e) => handleChange("ar_middle_name", e.target.value)} className="h-10 rounded-lg text-right border-gray-200" />
                                     ) : <p className="text-gray-900 font-medium py-1">{student.ar_middle_name || "-"}</p>}
@@ -1481,14 +1534,14 @@ function StudentDetailsPage() {
 
                                 {/* Name Row 3: Grandfather Name */}
                                 <div className="space-y-1">
-                                    <Label className="text-xs">Grandfather Name (English)</Label>
+                                    <Label className="text-xs">GRANDFATHER NAME (English)</Label>
                                     {isEditing ? (
                                         <Input value={student.en_grandfather_name} onChange={(e) => handleChange("en_grandfather_name", e.target.value)} className="h-10 rounded-lg border-gray-200" />
                                     ) : <p className="text-gray-900 font-medium py-1">{student.en_grandfather_name || "-"}</p>}
                                 </div>
 
                                 <div className="space-y-1 text-right" dir="rtl">
-                                    <Label className="flex justify-end text-xs">اسم الجد (عربي)</Label>
+                                    <Label className="flex justify-end text-xs">GRANDFATHER NAME | اسم الجد (عربي)</Label>
                                     {isEditing ? (
                                         <Input value={student.ar_grandfather_name} onChange={(e) => handleChange("ar_grandfather_name", e.target.value)} className="h-10 rounded-lg text-right border-gray-200" />
                                     ) : <p className="text-gray-900 font-medium py-1">{student.ar_grandfather_name || "-"}</p>}
@@ -1496,7 +1549,7 @@ function StudentDetailsPage() {
 
                                 {/* Name Row 4: Last Name (Family) */}
                                 <div className="space-y-1">
-                                    <Label className="flex items-center gap-1 text-xs">Last Name (English) {isEditing && <span className="text-red-500">*</span>}</Label>
+                                    <Label className="flex items-center gap-1 text-xs">LAST NAME / FAMILY NAME (English) {isEditing && <span className="text-red-500">*</span>}</Label>
                                     {isEditing ? (
                                         <>
                                             <Input
@@ -1510,7 +1563,7 @@ function StudentDetailsPage() {
                                 </div>
 
                                 <div className="space-y-1 text-right" dir="rtl">
-                                    <Label className="flex items-center gap-1 justify-end text-xs">اسم العائلة (عربي) {isEditing && <span className="text-red-500">*</span>}</Label>
+                                    <Label className="flex items-center gap-1 justify-end text-xs">LAST NAME / FAMILY NAME | اسم العائلة (عربي) {isEditing && <span className="text-red-500">*</span>}</Label>
                                     {isEditing ? (
                                         <>
                                             <Input

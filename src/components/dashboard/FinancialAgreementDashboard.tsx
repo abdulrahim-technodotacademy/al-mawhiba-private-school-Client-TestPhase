@@ -9,6 +9,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import {
   FileText,
@@ -27,10 +33,13 @@ import {
   FilePlus2,
   ArrowLeft,
   Settings2,
+  FileDown,
+  Check,
 } from "lucide-react";
 import React, { useEffect, useState } from "react";
-import SignaturePad from "react-signature-canvas";
+
 import { PDFDocument } from "pdf-lib";
+import SignaturePad from "react-signature-canvas";
 import Swal from "sweetalert2";
 import { getFullUrl } from "@/utils/fileUtils";
 
@@ -71,11 +80,8 @@ interface Section {
 
 interface FinancialAgreement {
   id: string;
-  auto_id: number;
-  is_deleted: boolean;
-  custom_order: number | null;
-  alt_txt: string | null;
-  student: string;
+  admission_class: string;
+  admission_class_name?: string;
   contract_number: string;
   contract_type: string;
   registration_fees: string;
@@ -144,6 +150,7 @@ interface Student {
   is_active: boolean;
   is_verified_registration_officer: boolean;
   financial_agreement: FinancialAgreement | null;
+  allAgreements: FinancialAgreement[];
   status: "not-created" | "pending" | "signed" | "Student-promoted";
   name: string;
   nameAr: string;
@@ -171,14 +178,16 @@ interface FeeStructure {
 interface Agreement {
   id: string;
   studentId: string;
-  terms: string;
-  fees: FeeStructure;
+  terms?: string;
+  fees?: FeeStructure;
   createdDate: string;
   sentDate?: string;
   signedDate?: string;
   signatureData?: string;
   rejectionReason?: string;
   status: string;
+  agreementId?: string;
+  rawData?: any;
 }
 
 interface AcademicYear {
@@ -227,7 +236,7 @@ type AgreementStatus =
   | "completed"; // When is_verified_agreement_pdf is true
 const FinancialAgreementDashboard = () => {
   const [activeTab, setActiveTab] = useState<
-    "pending" | "agreements" | "esign"
+    "pending" | "agreements" | "esign" | "settings"
   >("pending");
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [pendingStudents, setPendingStudents] = useState<Student[]>([]);
@@ -248,8 +257,8 @@ const FinancialAgreementDashboard = () => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [classFilter, setClassFilter] = useState("all");
-  const [signaturePad, setSignaturePad] = useState<SignaturePad | null>(null);
-  const [isSigning, setIsSigning] = useState(false);
+
+  const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
   const [currentSigningAgreement, setCurrentSigningAgreement] = useState<Agreement | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [houseNumber, setHouseNumber] = useState("");
@@ -259,11 +268,13 @@ const FinancialAgreementDashboard = () => {
   const [documentLanguage, setDocumentLanguage] = useState<"arabic" | "english">("arabic");
   const [isEditMode, setIsEditMode] = useState(true);
   const [guardianSignaturePad, setGuardianSignaturePad] = useState(null);
-  const [employerSignaturePad, setEmployerSignaturePad] = useState(null);
+  const [savedOfficerSignature, setSavedOfficerSignature] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState("");
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<string>("");
+  const [isCreatingNewAgreement, setIsCreatingNewAgreement] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Helper for static display fields
   const renderStaticDisplay = (value: string | number | null | undefined, extraProps = {}) => (
@@ -275,11 +286,7 @@ const FinancialAgreementDashboard = () => {
     </div>
   );
 
-  // ... inside the RegistrationDashboard component
-
   // Load initial data
-  // Update your useEffect hook for fetching data:
-  // In your student data mapping (inside the first useEffect)
   const loadData = React.useCallback(async () => {
     try {
       const accessToken = localStorage.getItem("accessToken");
@@ -325,55 +332,60 @@ const FinancialAgreementDashboard = () => {
         let showCreateButton = false;
         let primaryAgreement = null;
 
+        // Ensure we have an array of agreements
         const agreements = (
           Array.isArray(student.financial_agreement) ? student.financial_agreement : []
-        ).sort((a, b) => b.auto_id - a.auto_id);
+        ).sort((a: any, b: any) => (b.auto_id || 0) - (a.auto_id || 0));
 
-        const unverifiedAgreement = agreements.find(
-          (a) => a && a.is_verified_agreement_pdf === false
+        // 1. Check for an agreement that matches the current admission class
+        const currentClassAgreement = agreements.find(
+          (a) => a && (
+            String(a.admission_class) === String(student.admission_class?.id) ||
+            (a.admission_class?.id && String(a.admission_class.id) === String(student.admission_class?.id))
+          )
         );
 
-        const latestAgreement = agreements.length > 0 ? agreements[0] : null;
-
-        if (unverifiedAgreement) {
-          status = "pending";
-          statusAr = "بانتظار التحقق";
-          showCreateButton = false;
-          primaryAgreement = unverifiedAgreement;
-        } else if (agreements.length === 0) {
-          status = "not-created";
-          statusAr = "لم يتم الإنشاء";
-          showCreateButton = true;
-          primaryAgreement = null;
-        } else {
-          if (
-            latestAgreement &&
-            student.admission_class &&
-            latestAgreement.admission_class !== student.admission_class.id
-          ) {
-            status = "Student-promoted";
-            statusAr = "عدم تطابق الصف";
-            showCreateButton = true;
+        if (currentClassAgreement) {
+          // If agreement for current class exists, check its verification status
+          if (currentClassAgreement.is_verified_agreement_pdf === false) {
+            status = "pending";
+            statusAr = "بانتظار التحقق";
+            showCreateButton = false;
           } else {
             status = "signed";
             statusAr = "تم التوقيع";
             showCreateButton = false;
           }
-          primaryAgreement = latestAgreement;
+          primaryAgreement = currentClassAgreement;
+        } else {
+          // 2. If NO agreement for current class, determine if it's a new creation or a recreation (promoted)
+          primaryAgreement = agreements.length > 0 ? agreements[0] : null;
+          
+          if (student.is_promoted) {
+            status = "Student-promoted";
+            statusAr = "عدم تطابق الصف";
+            showCreateButton = true;
+          } else {
+            status = "not-created";
+            statusAr = "لم يتم الإنشاء";
+            showCreateButton = true;
+          }
         }
 
         return {
           id: student.id?.toString() || "unknown-id",
-          name: `${student.en_first_name || ""} ${student.en_last_name || ""}`.trim(),
-          nameAr: `${student.ar_first_name || ""} ${student.ar_last_name || ""}`.trim(),
+          name: `${student.en_first_name || ""} ${student.en_middle_name || ""} ${student.en_grandfather_name || ""} ${student.en_last_name || ""}`.replace(/\s+/g, ' ').trim(),
+          nameAr: `${student.ar_first_name || ""} ${student.ar_middle_name || ""} ${student.ar_grandfather_name || ""} ${student.ar_last_name || ""}`.replace(/\s+/g, ' ').trim(),
           grade: student.admission_class?.department_name || "N/A",
           type: student.section?.name || "N/A",
           registrationDate: student.admission_date,
           financial_agreement: primaryAgreement,
+          allAgreements: agreements,
           status,
           statusAr,
           showCreateButton,
           guardianEmail: student.email || "",
+          is_promoted: student.is_promoted,
           rawData: student,
         };
       });
@@ -399,42 +411,62 @@ const FinancialAgreementDashboard = () => {
     }
   }, []);
 
+
+
   useEffect(() => {
     loadData();
+
   }, [loadData]);
 
-  useEffect(() => {
-    const fetchAcademicYears = async () => {
-      try {
-        const accessToken = localStorage.getItem("accessToken");
-        const response = await fetch(
-          `${import.meta.env.VITE_API_BASE_URL}/students/academic-year/`,
+  const fetchAcademicYears = React.useCallback(async () => {
+    try {
+      const accessToken = localStorage.getItem("accessToken");
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL}/students/academic-year/`,
+      );
 
-        );
+      if (!response.ok) {
+        throw new Error("Failed to fetch academic years");
+      }
 
-        if (!response.ok) {
-          throw new Error("Failed to fetch academic years");
+      const responseData = await response.json();
+
+      if (responseData.data && Array.isArray(responseData.data)) {
+        setAcademicYears(responseData.data);
+        const currentYear = responseData.data.find((year: AcademicYear) => year.is_current);
+        if (currentYear) {
+          setSelectedAcademicYearId(currentYear.id);
         }
+      }
+    } catch (error) {
+      console.error("Error fetching academic years:", error);
+    }
+  }, []);
 
-        const responseData = await response.json();
-
-        // Access the data array from the response
-        if (responseData.data && Array.isArray(responseData.data)) {
-          setAcademicYears(responseData.data);
-
-          // Set default to current academic year if available
-          const currentYear = responseData.data.find((year: AcademicYear) => year.is_current);
-          if (currentYear) {
-            setSelectedAcademicYearId(currentYear.id);
+  useEffect(() => {
+    const fetchOfficerSignature = async () => {
+      try {
+        const token = localStorage.getItem("accessToken");
+        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/accounts/signature/`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.signature_image) {
+            setSavedOfficerSignature(data.signature_image);
           }
         }
-      } catch (error) {
-        console.error("Error fetching academic years:", error);
+      } catch (err) {
+        console.error("Error fetching officer signature:", err);
       }
     };
-
-    fetchAcademicYears();
+    fetchOfficerSignature();
   }, []);
+
+
+  useEffect(() => {
+    fetchAcademicYears();
+  }, [fetchAcademicYears]);
 
 
   const calculateTotal = () => {
@@ -516,6 +548,8 @@ const FinancialAgreementDashboard = () => {
       setHouseNumber(rawData.house_number || "");
     }
 
+    const initialSubtotal = 200 + 150 + 20 + 300 + 10;
+    
     setFeeStructure({
       registrationFee: 200,
       tutionFee: 150,
@@ -523,21 +557,23 @@ const FinancialAgreementDashboard = () => {
       transportFee: 300,
       adminFee: 10,
       paymentPlan: "one",
-      total: 0,
-      initialPaidAmount: 0,
+      total: initialSubtotal,
+      initialPaidAmount: initialSubtotal, // Default to full payment for "one" plan
       balanceAmount: 0,
       discount: 0,
-      subtotal: 0,
+      subtotal: initialSubtotal,
       discountedAmount: 0
     });
 
     setIsEditMode(true);
+    setIsCreatingNewAgreement(true);
     setActiveTab("agreements");
   };
 
   const handleViewAgreement = (student: Student) => {
     setSelectedStudent(student);
     setIsEditMode(false);
+    setIsCreatingNewAgreement(false);
 
     const agreement = student.financial_agreement;
     if (agreement) {
@@ -588,14 +624,50 @@ const FinancialAgreementDashboard = () => {
     return [...pendingStudents].find((s) => s.id === studentId);
   };
 
-  const filteredStudents = pendingStudents.filter((student) => {
+  const allRecords = pendingStudents.flatMap((student) => {
+    const records: any[] = [];
+
+    // 1. Creation Record (if student has no agreement for current class)
+    if (student.status === "not-created" || student.status === "Student-promoted") {
+      records.push({
+        id: `${student.id}-creation`,
+        student,
+        type: "creation",
+        status: student.status,
+        statusAr: student.statusAr,
+        group: 1,
+        isCreation: true
+      });
+    }
+
+    // 2. Agreement Records
+    (student.allAgreements || []).forEach((agreement) => {
+      const isSigned = agreement.is_verified_agreement_pdf;
+      records.push({
+        id: agreement.id,
+        student,
+        agreement,
+        type: isSigned ? "signed" : "pending",
+        status: isSigned ? "signed" : "pending",
+        statusAr: isSigned ? "تم التوقيع" : "بانتظار التحقق",
+        group: isSigned ? 3 : 2,
+        isCreation: false
+      });
+    });
+
+    return records;
+  });
+
+  const filteredRecords = allRecords.filter((record) => {
+    const { student, status } = record;
     const matchesStatus =
       statusFilter === "all" ||
-      student.status === statusFilter ||
+      (statusFilter === "not-created" && (status === "not-created" || status === "Student-promoted")) ||
+      status === statusFilter ||
       (statusFilter === "pending_all" &&
-        (student.status === "pending" ||
-          student.status === "not-created" ||
-          student.status === "Student-promoted"));
+        (status === "pending" ||
+          status === "not-created" ||
+          status === "Student-promoted"));
     const matchesClass = classFilter === "all" || student.grade === classFilter;
     const matchesSearch =
       student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -603,36 +675,115 @@ const FinancialAgreementDashboard = () => {
         ?.toLowerCase()
         .includes(searchQuery.toLowerCase());
     return matchesStatus && matchesClass && matchesSearch;
-  });
+  }).sort((a, b) => a.group - b.group);
+
+  const handleViewPDF = async (agreementId: string) => {
+    if (!agreementId) return;
+
+    // Open a new window immediately to avoid the pop-up blocker
+    const newWindow = window.open('about:blank', '_blank');
+    if (newWindow) {
+      newWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>View Agreement | AL-MAWHIBA</title>
+            <style>
+              body { font-family: system-ui, -apple-system, sans-serif; background-color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; color: #1e293b; }
+              .card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); text-align: center; }
+              .spinner { width: 32px; height: 32px; border: 3px solid #f1f5f9; border-bottom-color: #8b4513; border-radius: 50%; display: inline-block; animation: rotation 1s linear infinite; margin-bottom: 1rem; }
+              @keyframes rotation { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+            </style>
+          </head>
+          <body>
+            <div class="card">
+              <div class="spinner"></div>
+              <div style="font-weight: 600;">Loading Agreement...</div>
+            </div>
+          </body>
+        </html>
+      `);
+    }
+
+    try {
+      const accessToken = localStorage.getItem("accessToken");
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL}/students/financial-agreement-pdf-download/${agreementId}/`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+
+      if (!response.ok) throw new Error("Failed to fetch PDF");
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      if (newWindow) {
+        newWindow.location.href = url;
+      } else {
+        window.open(url, '_blank');
+      }
+    } catch (error) {
+      console.error("Failed to view PDF:", error);
+      if (newWindow) newWindow.close();
+      Swal.fire({
+        title: 'Error',
+        text: 'Failed to load PDF. Please try again.',
+        icon: 'error'
+      });
+    }
+  };
 
   const filteredAgreements = agreements.filter((agreement) => {
     if (activeTab === "esign") return true;
     return agreement.status === "agreement-created";
   });
 
+  const scrollToError = (errorObj: Record<string, string>) => {
+    const firstError = Object.keys(errorObj)[0];
+    if (firstError) {
+      const element = document.getElementById(firstError);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  };
+
   const handleSubmitAgreement = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     setSubmitError("");
-    console.log("Submitting agreement for student:", selectedStudent);
+    setErrors({});
+
+    const newErrors: Record<string, string> = {};
 
     if (!selectedStudent) {
-      setSubmitError("Please select a student");
-      setIsSubmitting(false);
-      return;
+      newErrors.student = "Please select a student";
     }
 
     if (!selectedAcademicYearId) {
-      setSubmitError("Please select an academic year");
+      newErrors.academic_year = "Please select an academic year";
+    }
+
+    if (!feeStructure.paymentPlan) {
+      newErrors.paymentPlan = "Please select a payment plan";
+    }
+
+    // "One Installment" Plan Validation
+    if (feeStructure.paymentPlan === "one") {
+      if (Math.abs(feeStructure.initialPaidAmount - feeStructure.total) > 0.001) {
+        newErrors.initial_paid_amount = `Full payment of ${feeStructure.total.toFixed(3)} OMR is required for "One Installment" plan.`;
+        setSubmitError(`Full payment is required for "One Installment" plan.`);
+      }
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      scrollToError(newErrors);
       setIsSubmitting(false);
       return;
     }
 
-    if (!feeStructure.paymentPlan) {
-      setSubmitError("Please select a payment plan");
-      setIsSubmitting(false);
-      return;
-    }
+    console.log("Submitting agreement for student:", selectedStudent);
 
     const now = new Date();
 
@@ -641,7 +792,7 @@ const FinancialAgreementDashboard = () => {
       student: selectedStudent.id,
       academic_year: selectedAcademicYearId,
       admission_class: selectedStudent.rawData.admission_class.id,
-      contract_type: "new",
+      contract_type: selectedStudent.is_promoted ? "re_registration" : "new",
       registration_fees: feeStructure.registrationFee.toFixed(3),
       tution_fee: feeStructure.tutionFee.toFixed(3),
       stationery_fees: feeStructure.stationeryFee.toFixed(3),
@@ -658,60 +809,47 @@ const FinancialAgreementDashboard = () => {
       language: documentLanguage,
     };
 
-    const amountForInstallments = feeStructure.balanceAmount;
+    const initialPaid = feeStructure.initialPaidAmount;
+    const balance = feeStructure.balanceAmount;
 
     // Add installment dates and amounts
     if (feeStructure.paymentPlan === "one") {
       payload.installment1_date = now.toISOString().split("T")[0];
-      payload.installment1_amount = amountForInstallments.toFixed(3);
+      payload.installment1_amount = initialPaid.toFixed(3);
     } else {
-      const firstInstallmentDate = new Date(now);
-      firstInstallmentDate.setMonth(firstInstallmentDate.getMonth() + 1);
-      payload.installment1_date = firstInstallmentDate
-        .toISOString()
-        .split("T")[0];
+      // Installment 1 is always the Initial Paid Amount (paid today)
+      payload.installment1_date = now.toISOString().split("T")[0];
+      payload.installment1_amount = initialPaid.toFixed(3);
 
-      const installmentsCount = feeStructure.paymentPlan === "two" ? 2 : 4;
-      const baseAmount = amountForInstallments / installmentsCount;
-      const inst1 = baseAmount.toFixed(3);
-      payload.installment1_amount = inst1;
+      const nextInstallmentDate = new Date(now);
+      nextInstallmentDate.setMonth(nextInstallmentDate.getMonth() + 1);
 
       if (feeStructure.paymentPlan === "two") {
-        const secondInstallmentDate = new Date(firstInstallmentDate);
-        secondInstallmentDate.setMonth(secondInstallmentDate.getMonth() + 1);
-        payload.installment2_date = secondInstallmentDate
-          .toISOString()
-          .split("T")[0];
-        // Calculate second installment as Difference to ensure exact sum
-        payload.installment2_amount = (amountForInstallments - parseFloat(inst1)).toFixed(3);
+        // Balance amount goes to the second installment
+        payload.installment2_date = nextInstallmentDate.toISOString().split("T")[0];
+        payload.installment2_amount = balance.toFixed(3);
       }
 
       if (feeStructure.paymentPlan === "four") {
-        const inst2 = inst1;
-        const inst3 = inst1;
-        const inst4 = (amountForInstallments - (parseFloat(inst1) * 3)).toFixed(3);
+        // Split balance into 3 remaining installments (2, 3, 4) with rounding handling
+        // Example: 334 balance -> 112, 111, 111
+        const inst2Value = Math.ceil(balance / 3);
+        const inst3Value = Math.ceil((balance - inst2Value) / 2);
+        const inst4Value = balance - inst2Value - inst3Value;
 
-        payload.installment2_amount = inst2;
-        payload.installment3_amount = inst3;
-        payload.installment4_amount = inst4;
+        payload.installment2_amount = inst2Value.toFixed(3);
+        payload.installment3_amount = inst3Value.toFixed(3);
+        payload.installment4_amount = inst4Value.toFixed(3);
 
-        const secondInstallmentDate = new Date(firstInstallmentDate);
-        secondInstallmentDate.setMonth(secondInstallmentDate.getMonth() + 1);
-        payload.installment2_date = secondInstallmentDate
-          .toISOString()
-          .split("T")[0];
+        payload.installment2_date = nextInstallmentDate.toISOString().split("T")[0];
+        
+        const thirdDate = new Date(nextInstallmentDate);
+        thirdDate.setMonth(thirdDate.getMonth() + 1);
+        payload.installment3_date = thirdDate.toISOString().split("T")[0];
 
-        const thirdInstallmentDate = new Date(firstInstallmentDate);
-        thirdInstallmentDate.setMonth(thirdInstallmentDate.getMonth() + 2);
-        payload.installment3_date = thirdInstallmentDate
-          .toISOString()
-          .split("T")[0];
-
-        const fourthInstallmentDate = new Date(firstInstallmentDate);
-        fourthInstallmentDate.setMonth(fourthInstallmentDate.getMonth() + 3);
-        payload.installment4_date = fourthInstallmentDate
-          .toISOString()
-          .split("T")[0];
+        const fourthDate = new Date(thirdDate);
+        fourthDate.setMonth(fourthDate.getMonth() + 1);
+        payload.installment4_date = fourthDate.toISOString().split("T")[0];
       }
     }
 
@@ -719,15 +857,15 @@ const FinancialAgreementDashboard = () => {
       const accessToken = localStorage.getItem("accessToken");
       if (!accessToken) throw new Error("Authentication required");
 
-      const isEditing = !!selectedStudent.financial_agreement;
+      const isEditing = !isCreatingNewAgreement;
       const agreementId = selectedStudent.financial_agreement?.id;
 
-      const url = isEditing
-        ? `${import.meta.env.VITE_API_BASE_URL}/students/update-payment-flag/${agreementId}/`
-        : `${import.meta.env.VITE_API_BASE_URL}/students/financial-agreement-create/`;
+      const url = isCreatingNewAgreement
+        ? `${import.meta.env.VITE_API_BASE_URL}/students/financial-agreement-create/`
+        : `${import.meta.env.VITE_API_BASE_URL}/students/update-payment-flag/${agreementId}/`;
 
       const response = await fetch(url, {
-        method: isEditing ? "PATCH" : "POST",
+        method: isCreatingNewAgreement ? "POST" : "PATCH",
         headers: {
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
@@ -974,6 +1112,48 @@ const FinancialAgreementDashboard = () => {
     return words;
   };
 
+  const trimCanvas = (canvas: HTMLCanvasElement) => {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return canvas;
+    const width = canvas.width;
+    const height = canvas.height;
+    const pixels = ctx.getImageData(0, 0, width, height);
+    const l = pixels.data.length;
+    let bound: { top: number | null, left: number | null, right: number | null, bottom: number | null } = { 
+      top: null, left: null, right: null, bottom: null 
+    };
+    let x, y;
+
+    for (let i = 0; i < l; i += 4) {
+      if (pixels.data[i + 3] !== 0) {
+        x = (i / 4) % width;
+        y = Math.floor((i / 4) / width);
+
+        if (bound.top === null) bound.top = y;
+        if (bound.left === null) bound.left = x;
+        else if (x < bound.left) bound.left = x;
+        if (bound.right === null) bound.right = x;
+        else if (x > bound.right) bound.right = x;
+        if (bound.bottom === null) bound.bottom = y;
+        else if (y > bound.bottom) bound.bottom = y;
+      }
+    }
+
+    if (bound.top === null) return canvas;
+
+    const trimHeight = bound.bottom! - bound.top! + 1;
+    const trimWidth = bound.right! - bound.left! + 1;
+    const trimmed = ctx.getImageData(bound.left!, bound.top!, trimWidth, trimHeight);
+
+    const copy = document.createElement('canvas');
+    copy.width = trimWidth;
+    copy.height = trimHeight;
+    const copyCtx = copy.getContext('2d');
+    if (copyCtx) copyCtx.putImageData(trimmed, 0, 0);
+
+    return copy;
+  };
+
   return (
     <div className="p-6 space-y-6">
       {isProcessing && (
@@ -1018,18 +1198,22 @@ const FinancialAgreementDashboard = () => {
           onClick={() => setActiveTab("pending")}
         >
           <Clock className="inline mr-2 h-4 w-4" />
-          Pending Students | الطلاب المعلقة
+          Agreements | الاتفاقيات
         </button>
         <button
           className={`px-6 py-3 font-medium transition-colors ${activeTab === "esign"
             ? "border-b-2 border-green-600 text-green-600 bg-green-50/50"
             : "text-gray-600 hover:text-green-600 hover:bg-gray-50"
             }`}
-          onClick={() => setActiveTab("esign")}
+          onClick={() => {
+            setActiveTab("esign");
+            setIsSigning(false);
+          }}
         >
           <PenTool className="inline mr-2 h-4 w-4" />
           E-Signature | التوقيع الإلكتروني
         </button>
+
       </div>
 
       {/* Summary Metrics */}
@@ -1049,7 +1233,7 @@ const FinancialAgreementDashboard = () => {
             <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-blue-600">Total Agreements | إجمالي الاتفاقيات</p>
               <h2 className="text-2xl font-black text-gray-900">
-                {pendingStudents.length}
+                {pendingStudents.reduce((acc, s) => acc + s.allAgreements.length, 0)}
               </h2>
             </div>
           </CardContent>
@@ -1091,7 +1275,7 @@ const FinancialAgreementDashboard = () => {
             <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-orange-600">Pending E-Signed | بانتظار التوقيع</p>
               <h2 className="text-2xl font-black text-gray-900">
-                {pendingStudents.filter(s => s.status === 'pending').length}
+                {pendingStudents.reduce((acc, s) => acc + s.allAgreements.filter(a => !a.is_verified_agreement_pdf).length, 0)}
               </h2>
             </div>
           </CardContent>
@@ -1112,7 +1296,7 @@ const FinancialAgreementDashboard = () => {
             <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-green-600">Completed (Signed) | اتفاقيات مكتملة</p>
               <h2 className="text-2xl font-black text-gray-900">
-                {pendingStudents.filter(s => s.status === 'signed').length}
+                {pendingStudents.reduce((acc, s) => acc + s.allAgreements.filter(a => a.is_verified_agreement_pdf).length, 0)}
               </h2>
             </div>
           </CardContent>
@@ -1126,7 +1310,7 @@ const FinancialAgreementDashboard = () => {
             <CardHeader className="pb-4">
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <CardTitle className="text-xl font-bold whitespace-nowrap">
-                  Pending Students | الطلاب المعلقة
+                  Agreements | الاتفاقيات
                 </CardTitle>
 
                 <div className="flex flex-wrap items-center gap-4 bg-gray-50/50 p-2 rounded-lg border border-gray-100">
@@ -1196,25 +1380,25 @@ const FinancialAgreementDashboard = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredStudents.length > 0 ? (
+                    {filteredRecords.length > 0 ? (
                       (() => {
-                        let lastStatus = "";
-                        return filteredStudents.map((student) => {
-                          const showSeparator = statusFilter === "all" && student.status !== lastStatus;
-                          lastStatus = student.status;
+                        let lastGroup = 0;
+                        return filteredRecords.map((record) => {
+                          const { student, agreement, group: currentGroup, status, statusAr, isCreation } = record;
+                          const showSeparator = statusFilter === "all" && currentGroup !== lastGroup;
+                          lastGroup = currentGroup;
 
                           const rows = [];
 
                           if (showSeparator) {
                             rows.push(
-                              <tr key={`sep-${student.id}`} className="bg-gray-50/50">
+                              <tr key={`sep-${record.id}`} className="bg-gray-50/50">
                                 <td colSpan={5} className="px-6 py-2">
                                   <div className="flex items-center">
                                     <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                                      {student.status === "pending" ? "Pending Verification | بانتظار التحقق" :
-                                        student.status === "not-created" ? "To be Created | بانتظار الإنشاء" :
-                                          student.status === "Student-promoted" ? "Class Mismatch | عدم تطابق الصف" :
-                                            "Signed / Completed | تم التوقيع / مكتمل"}
+                                      {currentGroup === 1 ? "Creation Financial Agreements | إنشاء العقود المالية" :
+                                        currentGroup === 2 ? "Pending for E-Signature | بانتظار التوقيع الإلكتروني" :
+                                          "Completed Verified Data | بيانات مكتملة ومحققة"}
                                     </span>
                                     <div className="flex-1 ml-4 h-[1px] bg-gray-200"></div>
                                   </div>
@@ -1224,15 +1408,15 @@ const FinancialAgreementDashboard = () => {
                           }
 
                           rows.push(
-                            <tr key={student.id} className="hover:bg-gray-50 transition-colors group">
+                            <tr key={record.id} className="hover:bg-gray-50 transition-colors group">
                               <td className="sticky left-0 bg-white group-hover:bg-gray-50 px-4 sm:px-6 py-4 whitespace-nowrap z-10 shadow-[2px_0_5px_rgba(0,0,0,0.05)] md:shadow-none">
-                                <div className="font-medium text-gray-900">{student.name}</div>
+                                <div className="font-medium text-gray-900">{student.name || student.nameAr}</div>
                                 <div className="text-gray-500 text-xs" dir="rtl">
                                   {student.nameAr}
                                 </div>
                               </td>
                               <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
-                                {student.grade}
+                                {agreement?.admission_class_name || student.grade}
                               </td>
                               <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
                                 <div>{student.type}</div>
@@ -1243,39 +1427,69 @@ const FinancialAgreementDashboard = () => {
                                 )}
                               </td>
                               <td className="px-4 py-4 whitespace-nowrap">
-                                <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${student.status === "signed" ? "bg-green-100 text-green-700" :
-                                  student.status === "pending" ? "bg-yellow-100 text-yellow-700 border border-yellow-200" :
-                                    student.status === "not-created" ? "bg-blue-50 text-blue-700 border border-blue-100" :
+                                <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${status === "signed" ? "bg-green-100 text-green-700" :
+                                  status === "pending" ? "bg-yellow-100 text-yellow-700 border border-yellow-200" :
+                                    status === "not-created" ? "bg-blue-50 text-blue-700 border border-blue-100" :
                                       "bg-gray-100 text-gray-700 font-normal normal-case"
                                   }`}>
-                                  {student.status === "not-created" ? "Ready" : student.status}
+                                  {status === "not-created" ? "Ready" : status}
                                 </span>
                                 <div className="text-gray-400 text-[10px] mt-0.5" dir="rtl">
-                                  {student.statusAr}
+                                  {statusAr}
                                 </div>
                               </td>
                               <td className="sticky right-0 bg-white group-hover:bg-gray-50 px-4 sm:px-6 py-4 whitespace-nowrap z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.05)] md:shadow-none">
-                                {student.showCreateButton ? (
+                                {isCreation ? (
                                   <Button
                                     size="sm"
                                     onClick={() => handleCreateAgreement(student)}
                                     className="bg-green-600 hover:bg-green-700 text-white shadow-sm h-8 px-4"
                                   >
                                     <FileText className="mr-1.5 h-3.5 w-3.5" />
-                                    {student.status === "Student-promoted"
+                                    {status === "Student-promoted"
                                       ? "Recreate"
                                       : "Create"}
                                   </Button>
-                                ) : student.status === "pending" ? (
-                                  <div className="flex items-center text-yellow-600 text-xs font-bold uppercase tracking-wider">
-                                    <Clock className="h-3.5 w-3.5 mr-1.5" />
-                                    Pending
+                                ) : status === "pending" ? (
+                                  <div className="flex items-center gap-2">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => agreement && handleViewAgreement({ ...student, financial_agreement: agreement })}
+                                      className="border-blue-200 text-blue-700 hover:bg-blue-50 h-8 px-3"
+                                    >
+                                      <Eye className="mr-1.5 h-3.5 w-3.5" />
+                                      View
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      onClick={() => {
+                                        const agreementData = {
+                                          id: student.financial_agreement?.id,
+                                          studentId: student.id,
+                                          agreementId: student.financial_agreement?.id,
+                                          rawData: student.rawData
+                                        };
+                                        console.log("Setting currentSigningAgreement (Agreements Tab):", agreementData);
+                                        setCurrentSigningAgreement(agreementData as any);
+                                        setIsSignatureModalOpen(true);
+                                      }}
+                                      className="h-8 text-xs bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100"
+                                    >
+                                      <PenTool className="h-4 w-4 mr-1" />
+                                      Sign Now
+                                    </Button>
                                   </div>
-                                ) : student.status === "signed" ? (
-                                  <div className="flex items-center text-green-600 text-xs font-bold uppercase tracking-wider">
-                                    <CheckCircle2 className="h-4 w-4 mr-1.5" />
-                                    Signed
-                                  </div>
+                                ) : status === "signed" ? (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => agreement?.id && handleViewPDF(agreement.id)}
+                                    className="border-green-200 text-green-700 hover:bg-green-50 shadow-sm h-8 px-3"
+                                  >
+                                    <FileDown className="mr-1.5 h-3.5 w-3.5" />
+                                    View PDF
+                                  </Button>
                                 ) : null}
                               </td>
                             </tr>
@@ -1472,7 +1686,7 @@ const FinancialAgreementDashboard = () => {
                               value={documentLanguage}
                               onValueChange={(value: "arabic" | "english") => setDocumentLanguage(value)}
                             >
-                              <SelectTrigger className="border-blue-300 focus:border-blue-500 bg-white">
+                              <SelectTrigger id="documentLanguage" className={`border-blue-300 focus:border-blue-500 bg-white ${errors.documentLanguage ? 'border-red-500 ring-1 ring-red-500' : ''}`}>
                                 <SelectValue placeholder="Select Language" />
                               </SelectTrigger>
                               <SelectContent>
@@ -1499,7 +1713,8 @@ const FinancialAgreementDashboard = () => {
                             <Input
                               type="number"
                               step="0.001"
-                              value={feeStructure.registrationFee}
+                              value={feeStructure.registrationFee || ""}
+                              onFocus={(e) => e.target.select()}
                               onChange={(e) => {
                                 const value = parseFloat(e.target.value) || 0;
                                 setFeeStructure((prev) => ({
@@ -1518,7 +1733,8 @@ const FinancialAgreementDashboard = () => {
                             <Input
                               type="number"
                               step="0.001"
-                              value={feeStructure.tutionFee}
+                              value={feeStructure.tutionFee || ""}
+                              onFocus={(e) => e.target.select()}
                               onChange={(e) => {
                                 const value = parseFloat(e.target.value) || 0;
                                 setFeeStructure((prev) => ({
@@ -1537,7 +1753,8 @@ const FinancialAgreementDashboard = () => {
                             <Input
                               type="number"
                               step="0.001"
-                              value={feeStructure.stationeryFee}
+                              value={feeStructure.stationeryFee || ""}
+                              onFocus={(e) => e.target.select()}
                               onChange={(e) => {
                                 const value = parseFloat(e.target.value) || 0;
                                 setFeeStructure((prev) => ({
@@ -1556,7 +1773,8 @@ const FinancialAgreementDashboard = () => {
                             <Input
                               type="number"
                               step="0.001"
-                              value={feeStructure.adminFee}
+                              value={feeStructure.adminFee || ""}
+                              onFocus={(e) => e.target.select()}
                               onChange={(e) => {
                                 const value = parseFloat(e.target.value) || 0;
                                 setFeeStructure((prev) => ({
@@ -1575,7 +1793,8 @@ const FinancialAgreementDashboard = () => {
                             <Input
                               type="number"
                               step="0.001"
-                              value={feeStructure.transportFee}
+                              value={feeStructure.transportFee || ""}
+                              onFocus={(e) => e.target.select()}
                               onChange={(e) => {
                                 const value = parseFloat(e.target.value) || 0;
                                 setFeeStructure((prev) => ({
@@ -1595,15 +1814,29 @@ const FinancialAgreementDashboard = () => {
                           {isEditMode ? (
                             <Select
                               value={feeStructure.paymentPlan}
-                              onValueChange={(value) => {
-                                setFeeStructure((prev) => ({
-                                  ...prev,
-                                  paymentPlan: value,
-                                }));
-                                calculateTotal();
+                              onValueChange={(value: "one" | "two" | "four") => {
+                                setFeeStructure((prev) => {
+                                  const subtotal =
+                                    (prev.registrationFee || 0) +
+                                    (prev.tutionFee || 0) +
+                                    (prev.stationeryFee || 0) +
+                                    (prev.adminFee || 0) +
+                                    (prev.transportFee || 0);
+                                  
+                                  let newInitialPaid = prev.initialPaidAmount;
+                                  if (value === "one") newInitialPaid = subtotal;
+                                  else if (value === "two") newInitialPaid = subtotal / 2;
+                                  else if (value === "four") newInitialPaid = subtotal / 4;
+
+                                  return {
+                                    ...prev,
+                                    paymentPlan: value,
+                                    initialPaidAmount: Number(newInitialPaid.toFixed(3)),
+                                  };
+                                });
                               }}
                             >
-                              <SelectTrigger>
+                              <SelectTrigger id="paymentPlan" className={`border-blue-300 focus:border-blue-500 bg-white ${errors.paymentPlan ? 'border-red-500 ring-1 ring-red-500' : ''}`}>
                                 <SelectValue placeholder="Select payment plan" />
                               </SelectTrigger>
                               <SelectContent>
@@ -1636,19 +1869,26 @@ const FinancialAgreementDashboard = () => {
                               <div>
                                 <Label className="text-blue-700 font-bold">Initial Paid Amount (OMR)</Label>
                                 {isEditMode ? (
-                                  <Input
-                                    type="number"
-                                    step="0.001"
-                                    value={feeStructure.initialPaidAmount}
-                                    onChange={(e) => {
-                                      const value = parseFloat(e.target.value) || 0;
-                                      setFeeStructure((prev) => ({
-                                        ...prev,
-                                        initialPaidAmount: value,
-                                      }));
-                                    }}
-                                    className="border-blue-300 focus:border-blue-500"
-                                  />
+                                  <>
+                                    <Input
+                                      id="initial_paid_amount"
+                                      type="number"
+                                      step="0.001"
+                                      value={feeStructure.initialPaidAmount || ""}
+                                      onFocus={(e) => e.target.select()}
+                                      onChange={(e) => {
+                                        const value = parseFloat(e.target.value) || 0;
+                                        setFeeStructure((prev) => ({
+                                          ...prev,
+                                          initialPaidAmount: value,
+                                        }));
+                                      }}
+                                      className={`border-blue-300 focus:border-blue-500 ${errors.initial_paid_amount ? 'border-red-500 ring-1 ring-red-500 text-red-600' : ''}`}
+                                    />
+                                    {errors.initial_paid_amount && (
+                                      <p className="text-red-500 text-[10px] mt-1 font-bold">{errors.initial_paid_amount}</p>
+                                    )}
+                                  </>
                                 ) : (
                                   renderStaticDisplay(feeStructure.initialPaidAmount.toFixed(3), { className: "border-blue-200" })
                                 )}
@@ -1682,7 +1922,7 @@ const FinancialAgreementDashboard = () => {
                               onValueChange={setSelectedAcademicYearId}
                               required
                             >
-                              <SelectTrigger>
+                              <SelectTrigger id="academic_year" className={`${errors.academic_year ? 'border-red-500 ring-1 ring-red-500' : ''}`}>
                                 <SelectValue placeholder="Select academic year" />
                               </SelectTrigger>
                               <SelectContent>
@@ -1831,14 +2071,14 @@ const FinancialAgreementDashboard = () => {
                         No agreements created
                       </h3>
                       <p className="mt-1 text-sm text-gray-500">
-                        Select a student from the Pending Students tab to create
+                        Select a student from the Agreements tab to create
                         an agreement
                       </p>
                       <Button
                         className="mt-4"
                         onClick={() => setActiveTab("pending")}
                       >
-                        View Pending Students
+                        View Agreements
                       </Button>
                     </div>
                   )}
@@ -1854,496 +2094,7 @@ const FinancialAgreementDashboard = () => {
               <CardTitle>E-Signature Management</CardTitle>
             </CardHeader>
             <CardContent>
-              {isSigning ? (
-                <div className="space-y-6">
-                  <h3 className="text-lg font-semibold">
-                    Sign Agreement for{" "}
-                    {getStudent(currentSigningAgreement?.studentId || "")?.name}
-                  </h3>
-
-                  {/* View and Download PDF Buttons */}
-                  <div className="flex gap-2 mb-4">
-                    <Button
-                      variant="outline"
-                      onClick={async () => {
-                        // 1. Open a new window immediately to avoid the pop-up blocker
-                        const newWindow = window.open('about:blank', '_blank');
-                        if (newWindow) {
-                          newWindow.document.write(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>Preparing Agreement | AL-MAWHIBA</title>
-              <style>
-                body {
-                  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                  background-color: #f8fafc;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  height: 100vh;
-                  margin: 0;
-                  color: #1e293b;
-                }
-                .card {
-                  background: white;
-                  padding: 3rem;
-                  border-radius: 16px;
-                  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
-                  text-align: center;
-                  max-width: 400px;
-                  width: 90%;
-                  animation: fadeIn 0.4s ease-out;
-                }
-                .spinner {
-                  width: 48px;
-                  height: 48px;
-                  border: 4px solid #f1f5f9;
-                  border-bottom-color: #8b4513; /* Professional Brown */
-                  border-radius: 50%;
-                  display: inline-block;
-                  box-sizing: border-box;
-                  animation: rotation 1s cubic-bezier(0.68, -0.55, 0.27, 1.55) infinite;
-                  margin-bottom: 1.5rem;
-                }
-                h1 {
-                  font-size: 1.5rem;
-                  margin: 0 0 0.5rem 0;
-                  color: #0f172a;
-                  font-weight: 700;
-                }
-                p {
-                  color: #64748b;
-                  margin: 0;
-                  line-height: 1.5;
-                }
-                @keyframes rotation {
-                  0% { transform: rotate(0deg); }
-                  100% { transform: rotate(360deg); }
-                }
-                @keyframes fadeIn {
-                  from { opacity: 0; transform: translateY(10px); }
-                  to { opacity: 1; transform: translateY(0); }
-                }
-              </style>
-            </head>
-            <body>
-              <div class="card">
-                <div class="spinner"></div>
-                <h1>Generating PDF...</h1>
-                <p>Please wait, your financial agreement is being prepared for signing.</p>
-              </div>
-            </body>
-          </html>
-        `);
-                        }
-
-                        setIsPdfLoading(true);
-                        try {
-                          if (!currentSigningAgreement?.rawData?.financial_agreement) {
-                            throw new Error("No financial agreement data found for this student.");
-                          }
-                          const agreementToShow = currentSigningAgreement.rawData.financial_agreement.find(
-                            (a) => a.is_verified_agreement_pdf === false
-                          );
-                          if (!agreementToShow) {
-                            throw new Error("Could not find an agreement pending signature to show.");
-                          }
-                          const agreementId = agreementToShow.id;
-                          const accessToken = localStorage.getItem("accessToken");
-                          const response = await fetch(
-                            `${import.meta.env.VITE_API_BASE_URL}/students/financial-agreement-pdf-download/${agreementId}/`,
-                            { headers: { Authorization: `Bearer ${accessToken}` } }
-                          );
-                          if (!response.ok) throw new Error("Failed to fetch PDF");
-                          const blob = await response.blob();
-                          const url = window.URL.createObjectURL(blob);
-
-                          // 2. Update the location of the already-open window
-                          if (newWindow) {
-                            newWindow.location.href = url;
-                          } else {
-                            // Fallback if the initial window was somehow blocked
-                            window.open(url, '_blank');
-                          }
-                        } catch (error) {
-                          console.error("Failed to view PDF:", error);
-                          if (newWindow) newWindow.close();
-                          Swal.fire({ title: 'Error', text: error.message, icon: 'error' });
-                        } finally {
-                          setIsPdfLoading(false);
-                        }
-                      }}
-                      disabled={isPdfLoading}
-                    >
-                      <Eye className="mr-2 h-4 w-4" />
-                      View Agreement PDF
-                    </Button>
-
-                    <Button
-                      onClick={async () => {
-                        setIsPdfLoading(true);
-
-                        try {
-                          // --- (Previous validation logic remains the same) ---
-                          if (!currentSigningAgreement?.rawData?.financial_agreement) {
-                            throw new Error("No financial agreement data found for this student.");
-                          }
-
-                          const agreementToShow = currentSigningAgreement.rawData.financial_agreement.find(
-                            (a) => a.is_verified_agreement_pdf === false
-                          );
-
-                          if (!agreementToShow) {
-                            throw new Error("Could not find an agreement pending signature to show.");
-                          }
-
-                          const agreementId = agreementToShow.id;
-                          const accessToken = localStorage.getItem("accessToken");
-
-                          // 1. Fetch the PDF from the server
-                          const response = await fetch(
-                            `${import.meta.env.VITE_API_BASE_URL}/students/financial-agreement-pdf-download/${agreementId}/`,
-                            { headers: { Authorization: `Bearer ${accessToken}` } }
-                          );
-
-                          if (!response.ok) {
-                            const errorText = await response.text();
-                            throw new Error(`Failed to fetch PDF. Server responded with: ${response.status} ${errorText}`);
-                          }
-
-                          // 2. Get the PDF data as a Blob
-                          const blob = await response.blob();
-
-                          // --- THIS IS THE NEW DOWNLOAD LOGIC ---
-
-                          // 3. Create a temporary URL for the Blob
-                          const url = window.URL.createObjectURL(blob);
-
-                          // 4. Create a temporary anchor (link) element
-                          const a = document.createElement('a');
-                          a.style.display = 'none'; // Keep it hidden
-                          a.href = url;
-
-                          // 5. Set the download filename
-                          const studentName = currentSigningAgreement.rawData.en_first_name || 'student';
-                          a.download = `Financial_Agreement_${studentName}.pdf`;
-
-                          // 6. Add the anchor to the page, click it to trigger the download, and then remove it
-                          document.body.appendChild(a);
-                          a.click();
-                          window.URL.revokeObjectURL(url); // Clean up the URL object
-                          document.body.removeChild(a); // Clean up the anchor element
-
-                        } catch (error) {
-                          console.error("Failed to download PDF:", error);
-                          Swal.fire({
-                            title: 'Error',
-                            text: error.message || "Failed to download the agreement PDF.",
-                            icon: 'error',
-                            timer: 5000,
-                            timerProgressBar: true
-                          });
-                        } finally {
-                          setIsPdfLoading(false);
-                        }
-                      }}
-                      className="mb-4"
-                      disabled={isPdfLoading}
-                    >
-                      {isPdfLoading ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Downloading...
-                        </>
-                      ) : (
-                        <>
-                          <FileText className="mr-2 h-4 w-4" />
-                          Download Agreement PDF
-                        </>
-                      )}
-                    </Button>
-                  </div>
-
-                  {/* Guardian Signature Pad */}
-                  <div className="border rounded-lg p-4 mb-6">
-                    <Label>Guardian Signature</Label>
-                    <div className="border-2 border-dashed rounded-lg h-48 w-full">
-                      <SignaturePad
-                        canvasProps={{ className: "w-full h-full" }}
-                        ref={(ref) => setGuardianSignaturePad(ref)}
-                      />
-                    </div>
-                    <div className="flex justify-end mt-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => guardianSignaturePad?.clear()}
-                        className="text-gray-500 hover:text-gray-700"
-                      >
-                        Clear
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Employer Signature Pad */}
-                  <div className="border rounded-lg p-4">
-                    <Label>Employer Signature</Label>
-                    <div className="border-2 border-dashed rounded-lg h-48 w-full">
-                      <SignaturePad
-                        canvasProps={{ className: "w-full h-full" }}
-                        ref={(ref) => setEmployerSignaturePad(ref)}
-                      />
-                    </div>
-                    <div className="flex justify-end mt-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => employerSignaturePad?.clear()}
-                        className="text-gray-500 hover:text-gray-700"
-                      >
-                        Clear
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Submit Signature Button */}
-                  <div className="flex justify-end gap-4">
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setIsSigning(false);
-                        setCurrentSigningAgreement(null);
-                      }}
-                    >
-                      Cancel
-                    </Button>
-
-                    <Button
-                      className="bg-green-600 hover:bg-green-700"
-                      onClick={async () => {
-                        if (
-                          !guardianSignaturePad ||
-                          !employerSignaturePad ||
-                          !currentSigningAgreement?.rawData
-                            ?.financial_agreement[0]?.id
-                        ) {
-                          return;
-                        }
-
-                        if (
-                          guardianSignaturePad.isEmpty() ||
-                          employerSignaturePad.isEmpty()
-                        ) {
-                          Swal.fire({
-                            title: 'Warning',
-                            text: "Please provide both guardian and employer signatures",
-                            icon: 'warning',
-                            timer: 5000,
-                            timerProgressBar: true
-                          });
-                          return;
-                        }
-
-                        setProcessingStep("Downloading original contract...");
-                        setIsProcessing(true);
-
-                        try {
-                          const accessToken =
-                            localStorage.getItem("accessToken");
-                          if (!accessToken)
-                            throw new Error("Authentication required");
-
-                          const agreementToSign = currentSigningAgreement.rawData.financial_agreement.find(
-                            (a: any) => a.is_verified_agreement_pdf === false
-                          );
-
-                          if (!agreementToSign) {
-                            throw new Error("Could not find an unverified agreement to sign.");
-                          }
-
-                          const agreementId = agreementToSign.id;
-
-                          // 1. Download original PDF
-                          const pdfResponse = await fetch(
-                            `${import.meta.env.VITE_API_BASE_URL
-                            }/students/financial-agreement-pdf-download/${agreementId}/`,
-                            {
-                              headers: {
-                                Authorization: `Bearer ${accessToken}`,
-                              },
-                            }
-                          );
-                          if (!pdfResponse.ok)
-                            throw new Error("Failed to download PDF");
-
-                          setProcessingStep("Preparing signature images...");
-                          // 2. Convert signatures to transparent PNG images
-                          // Utility function to convert DataURL to ArrayBuffer without fetch
-                          const dataUrlToArrayBuffer = (dataUrl: string) => {
-                            const base64 = dataUrl.split(',')[1];
-                            const binaryString = window.atob(base64);
-                            const bytes = new Uint8Array(binaryString.length);
-                            for (let i = 0; i < binaryString.length; i++) {
-                              bytes[i] = binaryString.charCodeAt(i);
-                            }
-                            return bytes.buffer;
-                          };
-
-                          const convertSignature = (signaturePad: any) => {
-                            const signatureCanvas = signaturePad.getCanvas();
-                            const tempCanvas = document.createElement("canvas");
-
-                            // Scale down if too large to optimize PDF size
-                            const maxDim = 800;
-                            let w = signatureCanvas.width;
-                            let h = signatureCanvas.height;
-                            if (w > maxDim || h > maxDim) {
-                              if (w > h) {
-                                h = (h / w) * maxDim;
-                                w = maxDim;
-                              } else {
-                                w = (w / h) * maxDim;
-                                h = maxDim;
-                              }
-                            }
-
-                            tempCanvas.width = w;
-                            tempCanvas.height = h;
-
-                            const ctx = tempCanvas.getContext("2d");
-                            ctx.clearRect(0, 0, w, h);
-                            ctx.drawImage(signatureCanvas, 0, 0, w, h);
-                            if (ctx) {
-                              ctx.clearRect(0, 0, w, h);
-                              ctx.drawImage(signatureCanvas, 0, 0, w, h);
-                            }
-
-                            return tempCanvas.toDataURL("image/png", 0.8);
-                          };
-
-                          const guardianSignatureUrl = convertSignature(guardianSignaturePad);
-                          const employerSignatureUrl = convertSignature(employerSignaturePad);
-
-                          const guardianPngBytes = dataUrlToArrayBuffer(guardianSignatureUrl);
-                          const employerPngBytes = dataUrlToArrayBuffer(employerSignatureUrl);
-
-                          setProcessingStep("Attaching signatures to document...");
-                          // 3. Load PDF and add transparent signatures
-                          const pdfDoc = await PDFDocument.load(
-                            await pdfResponse.arrayBuffer()
-                          );
-                          const guardianImage = await pdfDoc.embedPng(
-                            guardianPngBytes
-                          );
-                          const employerImage = await pdfDoc.embedPng(
-                            employerPngBytes
-                          );
-
-                          const pages = pdfDoc.getPages();
-                          const page = pages[0]; // First (and only) page for signatures
-                          const { width: pageWidth } = page.getSize();
-
-                          // Define coordinates based on language (English text/fonts have different heights)
-                          const isEnglish = (agreementToSign as any).language === 'english';
-
-                          // Y-coordinate: move down for English to land on the second dotted line
-                          const sigY = isEnglish ? 45 : 140;
-                          const guardianX = isEnglish ? 115 : 95;
-                          const employerX = isEnglish ? pageWidth - 215 : pageWidth - 215;
-
-                          // Guardian (Second Party) on the LEFT side - on توقيع الطرف الثاني/ dotted line
-                          page.drawImage(guardianImage, {
-                            x: guardianX,
-                            y: sigY,
-                            width: 160,
-                            height: 50,
-                            opacity: 1,
-                          });
-
-                          // Employer (First Party) on the RIGHT side - on توقيع الطرف الأول/ dotted line
-                          page.drawImage(employerImage, {
-                            x: employerX,
-                            y: sigY,
-                            width: 160,
-                            height: 50,
-                            opacity: 1,
-                          });
-
-                          // 4. Save and verify before upload
-                          setProcessingStep("Finalizing PDF...");
-                          const signedPdfBytes = await pdfDoc.save();
-                          const blob = new Blob([signedPdfBytes], {
-                            type: "application/pdf",
-                          });
-
-                          // 5. Upload signed PDF
-                          setProcessingStep("Uploading signed agreement...");
-                          const pdfname = `FA-${new Date().getFullYear()}-${Math.floor(
-                            Math.random() * 9000 + 1000
-                          )}`;
-                          const formData = new FormData();
-                          formData.append(
-                            "agreement_pdf",
-                            blob,
-                            `signed_agreement_${pdfname.replace(
-                              /\//g,
-                              "-"
-                            )}.pdf`
-                          );
-                          formData.append("is_verified_agreement_pdf", "true");
-
-                          const response = await fetch(
-                            `${import.meta.env.VITE_API_BASE_URL
-                            }/students/financial-agreement/${agreementId}/`,
-                            {
-                              method: "PATCH",
-                              headers: {
-                                Authorization: `Bearer ${accessToken}`,
-                              },
-                              body: formData,
-                            }
-                          );
-
-                          if (!response.ok) throw new Error("Upload failed");
-
-                          // Refresh data to update Signed Agreements list and metrics
-                          await loadData();
-                          setIsSigning(false);
-                          setCurrentSigningAgreement(null);
-                          guardianSignaturePad.clear();
-                          employerSignaturePad.clear();
-
-                          Swal.fire({
-                            title: 'Success',
-                            text: 'PDF successfully submitted!',
-                            icon: 'success',
-                            timer: 5000,
-                            timerProgressBar: true
-                          });
-                        } catch (error: any) {
-                          console.error("Error:", error);
-                          Swal.fire({
-                            title: 'Error',
-                            text: error.message,
-                            icon: 'error',
-                            timer: 5000,
-                            timerProgressBar: true
-                          });
-                        } finally {
-                          setIsProcessing(false);
-                        }
-                      }}
-                      disabled={isProcessing}
-                    >
-                      {isProcessing ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <CheckCircle className="mr-2 h-4 w-4" />
-                      )}
-                      {isProcessing ? "Processing..." : "Sign & Submit"}
-                    </Button>
-                  </div>
-                </div>
-              ) : (
+              <div className="space-y-4">
                 <div className="space-y-4">
                   {/* Pending Signatures Section */}
                   {(statusFilter === "all" || statusFilter === "pending") && (
@@ -2351,46 +2102,38 @@ const FinancialAgreementDashboard = () => {
                       <h3 className="text-lg font-semibold mb-4">
                         Pending Signatures
                       </h3>
-                      {pendingStudents.filter(
-                        (student) =>
-                          student.financial_agreement &&
-                          !student.financial_agreement.is_verified_agreement_pdf
+                      {pendingStudents.flatMap(student => 
+                        student.allAgreements
+                          .filter(a => !a.is_verified_agreement_pdf)
+                          .map(agreement => ({ student, agreement }))
                       ).length > 0 ? (
                         <div className="space-y-2">
-                          {pendingStudents
-                            .filter(
-                              (student) =>
-                                student.financial_agreement &&
-                                !student.financial_agreement
-                                  .is_verified_agreement_pdf
+                          {pendingStudents.flatMap(student => 
+                              student.allAgreements
+                                .filter(a => !a.is_verified_agreement_pdf)
+                                .map(agreement => ({ student, agreement }))
                             )
-                            .map((student) => (
-                              <Card key={student.id}>
+                            .sort((a, b) => new Date(b.agreement.agreement_date || '').getTime() - new Date(a.agreement.agreement_date || '').getTime())
+                            .map(({ student, agreement }) => (
+                              <Card key={agreement.id}>
                                 <CardContent className="p-4">
                                   <div className="flex justify-between items-center">
                                     <div>
                                       <h4 className="font-medium">
-                                        {student.name}
+                                        {student.name || student.nameAr}
                                       </h4>
                                       <p className="text-sm text-gray-600">
-                                        {student.grade} • Contract:{" "}
-                                        {
-                                          student.financial_agreement
-                                            ?.contract_number
-                                        }
+                                        {agreement.admission_class_name || student.grade} • Contract:{" "}
+                                        {agreement.contract_number}
                                       </p>
                                       <p className="text-sm mt-1 text-gray-500">
-                                        Created:{" "}
-                                        {
-                                          student.financial_agreement
-                                            ?.agreement_date
-                                        }
+                                        Created: {agreement.agreement_date}
                                       </p>
                                     </div>
                                     <div className="flex gap-2">
                                       <Button
                                         variant="outline"
-                                        onClick={() => handleViewAgreement(student)}
+                                        onClick={() => handleViewAgreement({ ...student, financial_agreement: agreement })}
                                         className="border-blue-200 text-blue-700 hover:bg-blue-50"
                                       >
                                         <Eye className="mr-2 h-4 w-4" />
@@ -2398,16 +2141,17 @@ const FinancialAgreementDashboard = () => {
                                       </Button>
                                       <Button
                                         onClick={() => {
-                                          setCurrentSigningAgreement({
+                                          const agreementData = {
                                             id: student.id,
                                             studentId: student.id,
                                             rawData: student.rawData,
                                             status: "pending",
-                                            createdDate:
-                                              student.financial_agreement
-                                                ?.agreement_date || "",
-                                          });
-                                          setIsSigning(true);
+                                            agreementId: agreement.id,
+                                            createdDate: agreement.agreement_date || "",
+                                          };
+                                          console.log("Setting currentSigningAgreement (E-Signature Tab):", agreementData);
+                                          setCurrentSigningAgreement(agreementData as any);
+                                          setIsSignatureModalOpen(true);
                                         }}
                                         className="bg-blue-600 hover:bg-blue-700"
                                       >
@@ -2437,40 +2181,32 @@ const FinancialAgreementDashboard = () => {
                       <h3 className="text-lg font-semibold mb-4">
                         Completed Signatures
                       </h3>
-                      {pendingStudents.filter(
-                        (student) =>
-                          student.financial_agreement &&
-                          student.financial_agreement.is_verified_agreement_pdf
+                      {pendingStudents.flatMap(student => 
+                        student.allAgreements
+                          .filter(a => a.is_verified_agreement_pdf)
+                          .map(agreement => ({ student, agreement }))
                       ).length > 0 ? (
                         <div className="space-y-2">
                           {pendingStudents
-                            .filter(
-                              (student) =>
-                                student.financial_agreement &&
-                                student.financial_agreement
-                                  .is_verified_agreement_pdf
+                            .flatMap(student => 
+                              student.allAgreements
+                                .filter(a => a.is_verified_agreement_pdf)
+                                .map(agreement => ({ student, agreement }))
                             )
-                            .map((student) => (
-                              <Card key={student.id}>
+                            .sort((a, b) => new Date(b.agreement.agreement_date || '').getTime() - new Date(a.agreement.agreement_date || '').getTime())
+                            .map(({ student, agreement }) => (
+                              <Card key={agreement.id}>
                                 <CardContent className="p-4">
                                   <div className="flex justify-between items-center">
                                     <div>
                                       <h4 className="font-medium">
-                                        {student.name}
+                                        {student.name || student.nameAr}
                                       </h4>
                                       <p className="text-sm text-gray-600">
-                                        {student.grade} • Contract:{" "}
-                                        {
-                                          student.financial_agreement
-                                            ?.contract_number
-                                        }
+                                        {agreement.admission_class_name || student.grade} • Contract: {agreement.contract_number}
                                       </p>
                                       <p className="text-sm mt-1 text-gray-500">
-                                        Signed on:{" "}
-                                        {
-                                          student.financial_agreement
-                                            ?.agreement_date
-                                        }
+                                        Signed on: {agreement.agreement_date}
                                       </p>
                                     </div>
                                     <div className="flex items-center space-x-2">
@@ -2480,59 +2216,10 @@ const FinancialAgreementDashboard = () => {
                                       </div>
                                       <Button
                                         variant="outline"
-                                        onClick={async () => {
-                                          const agreementId = student.financial_agreement?.id;
-                                          if (!agreementId) return;
-
-                                          // Open a new window immediately to avoid the pop-up blocker
-                                          const newWindow = window.open('about:blank', '_blank');
-                                          if (newWindow) {
-                                            newWindow.document.write(`
-                                            <!DOCTYPE html>
-                                            <html>
-                                              <head>
-                                                <title>View Agreement | AL-MAWHIBA</title>
-                                                <style>
-                                                  body { font-family: system-ui, -apple-system, sans-serif; background-color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; color: #1e293b; }
-                                                  .card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); text-align: center; }
-                                                  .spinner { width: 32px; height: 32px; border: 3px solid #f1f5f9; border-bottom-color: #8b4513; border-radius: 50%; display: inline-block; animation: rotation 1s linear infinite; margin-bottom: 1rem; }
-                                                  @keyframes rotation { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-                                                </style>
-                                              </head>
-                                              <body>
-                                                <div class="card">
-                                                  <div class="spinner"></div>
-                                                  <div style="font-weight: 600;">Loading Agreement...</div>
-                                                </div>
-                                              </body>
-                                            </html>
-                                          `);
-                                          }
-
-                                          try {
-                                            const accessToken = localStorage.getItem("accessToken");
-                                            const response = await fetch(
-                                              `${import.meta.env.VITE_API_BASE_URL}/students/financial-agreement-pdf-download/${agreementId}/`,
-                                              { headers: { Authorization: `Bearer ${accessToken}` } }
-                                            );
-
-                                            if (!response.ok) throw new Error("Failed to fetch PDF");
-
-                                            const blob = await response.blob();
-                                            const url = window.URL.createObjectURL(blob);
-
-                                            if (newWindow) {
-                                              newWindow.location.href = url;
-                                            } else {
-                                              window.open(url, '_blank');
-                                            }
-                                          } catch (error) {
-                                            console.error("Failed to view PDF:", error);
-                                            if (newWindow) newWindow.close();
-                                            Swal.fire({ title: 'Error', text: 'Failed to load PDF. Please try again.', icon: 'error' });
-                                          }
-                                        }}
+                                        onClick={() => handleViewPDF(agreement.id)}
+                                        className="border-blue-200 text-blue-700 hover:bg-blue-50"
                                       >
+                                        <Eye className="mr-2 h-4 w-4" />
                                         View PDF & Download
                                       </Button>
                                     </div>
@@ -2552,10 +2239,250 @@ const FinancialAgreementDashboard = () => {
                     </div>
                   )}
                 </div>
-              )}
+              </div>
             </CardContent>
           </Card>
         )}
+
+        {/* Signature Popup Modal */}
+        <Dialog open={isSignatureModalOpen} onOpenChange={setIsSignatureModalOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-2xl font-bold flex items-center gap-2">
+                <PenTool className="h-6 w-6 text-green-600" />
+                Sign Agreement for {currentSigningAgreement?.rawData?.en_first_name} {currentSigningAgreement?.rawData?.en_last_name}
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-6 pt-4">
+              <div className="flex flex-col md:flex-row justify-between items-center bg-slate-50 p-4 rounded-xl border border-slate-200 gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <FileText className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">Review Document</p>
+                    <p className="text-xs text-slate-500">Contract No: {currentSigningAgreement?.rawData?.financial_agreement[0]?.contract_number}</p>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={() => handleViewPDF(currentSigningAgreement?.agreementId || currentSigningAgreement?.rawData?.financial_agreement[0]?.id, true)}
+                    className="border-slate-200 hover:bg-slate-100"
+                  >
+                    <Eye className="mr-2 h-4 w-4" />
+                    View PDF
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      const agreementId = currentSigningAgreement?.agreementId || currentSigningAgreement?.rawData?.financial_agreement[0]?.id;
+                      if (!agreementId) return;
+                      setIsPdfLoading(true);
+                      try {
+                        const accessToken = localStorage.getItem("accessToken");
+                        const response = await fetch(
+                          `${import.meta.env.VITE_API_BASE_URL}/students/financial-agreement-pdf-download/${agreementId}/`,
+                          { headers: { Authorization: `Bearer ${accessToken}` } }
+                        );
+                        if (!response.ok) throw new Error("Failed to fetch PDF");
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.style.display = 'none';
+                        a.href = url;
+                        const studentName = currentSigningAgreement?.rawData?.en_first_name || 'student';
+                        a.download = `Financial_Agreement_${studentName}.pdf`;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                      } catch (error: any) {
+                        console.error("Download error:", error);
+                        Swal.fire({ title: 'Error', text: error.message, icon: 'error' });
+                      } finally {
+                        setIsPdfLoading(false);
+                      }
+                    }}
+                    disabled={isPdfLoading}
+                  >
+                    {isPdfLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileDown className="mr-2 h-4 w-4" />}
+                    Download PDF
+                  </Button>
+                </div>
+              </div>
+
+              {/* Signature Pad Section */}
+              <div className="space-y-4">
+                <div className="flex flex-col gap-2">
+                  <Label className="text-base font-bold text-slate-900">Guardian Signature | توقيع ولي الأمر</Label>
+                  <p className="text-sm text-slate-500">Please sign in the box below | يرجى التوقيع في المربع أدناه</p>
+                </div>
+                
+                <div className="border-2 border-dashed border-slate-200 rounded-2xl bg-white overflow-hidden shadow-inner">
+                  <SignaturePad
+                    canvasProps={{ 
+                      className: "w-full h-64 cursor-crosshair",
+                      style: { touchAction: 'none' } 
+                    }}
+                    ref={(ref) => setGuardianSignaturePad(ref)}
+                  />
+                </div>
+                
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2 text-green-600 bg-green-50 px-3 py-1.5 rounded-full border border-green-100">
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span className="text-xs font-bold uppercase tracking-wider">Officer signature automated</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    onClick={() => guardianSignaturePad?.clear()}
+                    className="text-slate-500 hover:text-red-600 transition-colors"
+                  >
+                    <XCircle className="h-4 w-4 mr-2" />
+                    Clear Pad
+                  </Button>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-3 pt-6 border-t">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsSignatureModalOpen(false)}
+                  className="px-6 py-6 rounded-xl border-slate-200 text-slate-600 font-bold hover:bg-slate-50 transition-all"
+                  disabled={isProcessing}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={async () => {
+                    if (!guardianSignaturePad || !currentSigningAgreement?.rawData) return;
+                    if (guardianSignaturePad.isEmpty()) {
+                      Swal.fire({ title: 'Warning', text: "Please provide the guardian signature", icon: 'warning' });
+                      return;
+                    }
+                    if (!savedOfficerSignature) {
+                      Swal.fire({ title: 'Error', text: "Officer signature not found in profile.", icon: 'error' });
+                      return;
+                    }
+
+                    setIsProcessing(true);
+                    setProcessingStep("Fetching Document Template...");
+                    
+                    try {
+                      const accessToken = localStorage.getItem("accessToken");
+                      const agreementToSign = currentSigningAgreement.rawData.financial_agreement.find((a: any) => 
+                        a.id === currentSigningAgreement.agreementId || String(a.auto_id) === String(currentSigningAgreement.agreementId)
+                      ) || currentSigningAgreement.rawData.financial_agreement[0];
+                      
+                      const agreementId = agreementToSign.id;
+                      console.log("Agreement being signed:", agreementToSign);
+                      console.log("Using UUID for endpoints:", agreementId);
+
+                      const pdfUrl = `${import.meta.env.VITE_API_BASE_URL}/students/financial-agreement-pdf-download/${agreementId}/`;
+                      console.log("PDF download URL:", pdfUrl);
+
+                      const pdfResponse = await fetch(pdfUrl, {
+                        headers: { Authorization: `Bearer ${accessToken}` }
+                      });
+                      
+                      if (!pdfResponse.ok) {
+                        const errorMsg = `Failed to fetch PDF (${pdfResponse.status})`;
+                        console.error(errorMsg);
+                        throw new Error(errorMsg);
+                      }
+
+                      setProcessingStep("Injecting Signatures...");
+                      const arrayBuffer = await pdfResponse.arrayBuffer();
+                      const pdfDoc = await PDFDocument.load(arrayBuffer);
+                      
+                      const convertSignature = (pad: any) => trimCanvas(pad.getCanvas()).toDataURL('image/png');
+                      const dataUrlToArrayBuffer = (url: string) => {
+                        const base64 = url.split(',')[1];
+                        const binary = window.atob(base64);
+                        const len = binary.length;
+                        const buffer = new Uint8Array(len);
+                        for (let i = 0; i < len; i++) {
+                          buffer[i] = binary.charCodeAt(i);
+                        }
+                        return buffer.buffer;
+                      };
+
+                      const guardianSignatureUrl = convertSignature(guardianSignaturePad);
+                      const guardianPngBytes = dataUrlToArrayBuffer(guardianSignatureUrl);
+                      const guardianImage = await pdfDoc.embedPng(guardianPngBytes);
+
+                      const page = pdfDoc.getPages()[0];
+                      const currentAgreement = currentSigningAgreement.rawData.financial_agreement[0];
+                      const isEnglish = currentAgreement.language === "english";
+                      const sigY = isEnglish ? 80 : 175;
+                      const guardianX = isEnglish ? 125 : 110;
+
+                      page.drawImage(guardianImage, {
+                        x: guardianX,
+                        y: sigY,
+                        width: 120,
+                        height: 40,
+                        opacity: 1,
+                      });
+
+                      setProcessingStep("Finalizing PDF Document...");
+                      const signedPdfBytes = await pdfDoc.save();
+                      const blob = new Blob([signedPdfBytes], { type: 'application/pdf' });
+                      const formData = new FormData();
+                      formData.append("agreement_pdf", blob, `signed-agreement-${agreementId}.pdf`);
+                      formData.append("is_verified_agreement_pdf", 'true');
+
+                      setProcessingStep("Uploading Signed Agreement...");
+                      const patchUrl = `${import.meta.env.VITE_API_BASE_URL}/students/update-payment-flag/${agreementId}/`;
+                      console.log("PATCH upload URL:", patchUrl);
+
+                      const response = await fetch(patchUrl, {
+                        method: 'PATCH',
+                        headers: { Authorization: `Bearer ${accessToken}` },
+                        body: formData,
+                      });
+
+                      if (!response.ok) {
+                        const errorMsg = `Upload failed (${response.status})`;
+                        console.error(errorMsg);
+                        throw new Error(errorMsg);
+                      }
+
+                      await loadData();
+                      setIsSignatureModalOpen(false);
+                      setCurrentSigningAgreement(null);
+                      guardianSignaturePad.clear();
+
+                      Swal.fire({ title: 'Success', text: 'Agreement signed successfully!', icon: 'success', timer: 5000 });
+                    } catch (error: any) {
+                      console.error("Signing error:", error);
+                      Swal.fire({ title: 'Error', text: error.message, icon: 'error' });
+                    } finally {
+                      setIsProcessing(false);
+                    }
+                  }}
+                  className="px-10 py-6 rounded-xl bg-green-600 hover:bg-green-700 text-white font-black shadow-lg shadow-green-200 transition-all transform hover:scale-[1.02] active:scale-[0.98]"
+                  disabled={isProcessing}
+                >
+                  {isProcessing ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      {processingStep || "Processing..."}
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="mr-2 h-5 w-5" />
+                      Sign & Submit Agreement
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
