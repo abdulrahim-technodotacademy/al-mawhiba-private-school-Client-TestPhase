@@ -33,6 +33,7 @@ import {
 import { useState, useEffect } from "react";
 import NewStudentRegistrationForm from "./NewStudentRegistrationForm";
 import { toast } from "@/hooks/use-toast";
+import Swal from 'sweetalert2';
 
 type Student = {
   id: string;
@@ -343,6 +344,19 @@ setSelectedClass(classValue);
 
 
 const verifyStudent = async (studentId: string) => {
+  const result = await Swal.fire({
+    title: 'Confirm Verification | تأكيد التحقق',
+    text: "Are you sure you want to verify this student? This will activate their record and set the admission date. | هل أنت متأكد من رغبتك في التحقق من هذا الطالب؟ سيؤدي ذلك إلى تفعيل سجلهم وتحديد تاريخ القبول.",
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#16a34a',
+    cancelButtonColor: '#d33',
+    confirmButtonText: 'Yes, Verify | نعم، تحقق',
+    cancelButtonText: 'Cancel | إلغاء'
+  });
+
+  if (!result.isConfirmed) return;
+
   setLoading(true);
 
   try {
@@ -381,13 +395,38 @@ const verifyStudent = async (studentId: string) => {
           : student
       )
     );
+
+    Swal.fire({
+      title: 'Success! | تم بنجاح!',
+      text: 'Student has been successfully verified. | تم التحقق من الطالب بنجاح.',
+      icon: 'success',
+      confirmButtonColor: '#16a34a'
+    });
   } catch (error) {
     console.error("Error verifying student:", error);
+    Swal.fire({
+      title: 'Error! | خطأ!',
+      text: 'Failed to verify student. | فشل التحقق من الطالب.',
+      icon: 'error'
+    });
   } finally {
     setLoading(false);
   }
 };
 const rejectStudent = async (studentId: string) => {
+  const result = await Swal.fire({
+    title: 'Confirm Rejection | تأكيد الرفض',
+    text: "Are you sure you want to reject/delete this student registration? This action can be seen as a deletion. | هل أنت متأكد من رغبتك في رفض/حذف تسجيل هذا الطالب؟ يمكن اعتبار هذا الإجراء بمثابة حذف.",
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#dc2626',
+    cancelButtonColor: '#6b7280',
+    confirmButtonText: 'Yes, Reject | نعم، ارفض',
+    cancelButtonText: 'Cancel | إلغاء'
+  });
+
+  if (!result.isConfirmed) return;
+
   setLoading(true);
 
   try {
@@ -409,7 +448,7 @@ const rejectStudent = async (studentId: string) => {
     );
 
     if (!response.ok) {
-      throw new Error("Failed to verify student");
+      throw new Error("Failed to reject student");
     }
 
     // Optional: update UI immediately
@@ -420,8 +459,20 @@ const rejectStudent = async (studentId: string) => {
           : student
       )
     );
+
+    Swal.fire({
+      title: 'Rejected! | تم الرفض!',
+      text: 'Student registration has been rejected. | تم رفض تسجيل الطالب.',
+      icon: 'info',
+      confirmButtonColor: '#dc2626'
+    });
   } catch (error) {
-    console.error("Error verifying student:", error);
+    console.error("Error rejecting student:", error);
+    Swal.fire({
+      title: 'Error! | خطأ!',
+      text: 'Failed to reject student. | فشل رفض الطالب.',
+      icon: 'error'
+    });
   } finally {
     setLoading(false);
   }

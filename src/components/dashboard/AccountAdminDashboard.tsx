@@ -63,6 +63,9 @@ const AccountAdminDashboard = () => {
   const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
   const [signingPaymentInfo, setSigningPaymentInfo] = useState<any>(null); // To store info of the payment being signed
   const [isAttachingSignature, setIsAttachingSignature] = useState(false);
+  const [hasSignature, setHasSignature] = useState<boolean>(true);
+  const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
+  const [isSavingSignature, setIsSavingSignature] = useState(false);
 
   // Refs for the signature pads
   const accountantSigPad = useRef<SignatureCanvas>(null);
@@ -73,7 +76,7 @@ const AccountAdminDashboard = () => {
   useEffect(() => {
     const fetchAcademicYears = async () => {
       try {
-        const response = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/students/academic-year/`);
+        const response = await api.get(`/students/academic-year/`);
         setAcademicYears(response.data.data);
         if (response.data.data.length > 0) {
           // No longer setting selectedYear here, as it defaults to 'all'
@@ -82,7 +85,32 @@ const AccountAdminDashboard = () => {
         console.error('Error fetching academic years:', error);
       }
     };
+
+    const checkSignature = async () => {
+      try {
+        const response = await api.get(`/accounts/signature/`);
+        setHasSignature(response.data.has_signature);
+        setSignatureUrl(response.data.signature_image);
+      } catch (error) {
+        console.error('Error checking signature:', error);
+      }
+    };
+
     fetchAcademicYears();
+    checkSignature();
+
+    // Listen for real-time signature updates from the management modal
+    const handleSignatureUpdate = (event: any) => {
+      const { hasSignature: newHasSignature, signatureUrl: newSignatureUrl } = event.detail;
+      setHasSignature(newHasSignature);
+      setSignatureUrl(newSignatureUrl);
+    };
+
+    window.addEventListener('signatureUpdated', handleSignatureUpdate);
+
+    return () => {
+      window.removeEventListener('signatureUpdated', handleSignatureUpdate);
+    };
   }, []);
 
   // Fetch ALL student data once academic years are loaded
@@ -119,7 +147,7 @@ const AccountAdminDashboard = () => {
     setLoading(true);
     try {
       // Always fetch all students for all years to enable global filtering
-      const response = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/students/students-academic-details/?academic_year_id=all`);
+      const response = await api.get(`/students/students-academic-details/?academic_year_id=all`);
       const students = response.data.data;
 
       console.log('student details', students);
@@ -220,15 +248,30 @@ const AccountAdminDashboard = () => {
         });
       });
 
-      // Sort students: Primary by Payment Status (Incomplete first), Secondary by Admission Number (Asc), Tertiary by Year (Desc)
+      // Sort students: 
+      // 1. Pending Recording (incomplete payment)
+      // 2. Un-verified Payments (has unverified records)
+      // 3. Completed
       processedStudents.sort((a, b) => {
-        // Incomplete payments first (false < true)
-        if (a.paymentComplete !== b.paymentComplete) {
-          return a.paymentComplete ? 1 : -1;
+        // Define priority levels
+        const getPriority = (s: any) => {
+          if (!s.paymentComplete) return 0; // Recording needed (Highest priority)
+          if (s.hasUnverifiedPayments) return 1; // Verification needed
+          return 2; // Completed (Lowest priority)
+        };
+
+        const priorityA = getPriority(a);
+        const priorityB = getPriority(b);
+
+        if (priorityA !== priorityB) {
+          return priorityA - priorityB;
         }
 
+        // Secondary sort: Admission Number (Asc)
         const numCompare = a.admissionNumber.localeCompare(b.admissionNumber);
         if (numCompare !== 0) return numCompare;
+
+        // Tertiary sort: Year (Desc)
         return b.academicYear.localeCompare(a.academicYear);
       });
 
@@ -295,10 +338,21 @@ const AccountAdminDashboard = () => {
     return matchesYear && matchesSearch && matchesClass && matchesStatus;
   });
 
-  // Calculate counts for the filter cards based on the CURRENT filters
-  const totalStudentsCount = filteredStudents.length;
-  const pendingStudentsCount = filteredStudents.filter(s => !s.paymentComplete).length;
-  const completedStudentsCount = filteredStudents.filter(s => s.paymentComplete).length;
+  // Calculate counts for the filter cards based on Year/Class/Search but NOT the card's own filterStatus
+  const baseFilteredStudents = studentList.filter(student => {
+    const matchesYear = selectedYear === 'all' || student.academicYearId === selectedYear;
+    const searchLow = searchQuery.toLowerCase().trim();
+    const matchesSearch = !searchLow ||
+      (student.name || "").toLowerCase().includes(searchLow) ||
+      (student.nameAr || "").toLowerCase().includes(searchLow) ||
+      (student.admissionNumber || "").toLowerCase().includes(searchLow);
+    const matchesClass = selectedClass === 'all' || student.grade === selectedClass;
+    return matchesYear && matchesSearch && matchesClass;
+  });
+
+  const totalStudentsCount = baseFilteredStudents.length;
+  const pendingStudentsCount = baseFilteredStudents.filter(s => !s.paymentComplete).length;
+  const completedStudentsCount = baseFilteredStudents.filter(s => s.paymentComplete).length;
 
   const showStudentDetails = async (student: any) => {
     setSelectedStudent(student);
@@ -308,8 +362,8 @@ const AccountAdminDashboard = () => {
     try {
       // NOTE: The API call here might be redundant if `studentList` already has all details.
       // For this implementation, we assume a fresh fetch is desired for the most up-to-date data.
-      const response = await axios.get(
-        `${import.meta.env.VITE_API_BASE_URL}/students/students-academic-details/?academic_year_id=${student.academicYearId}&student_id=${student.originalId}`
+      const response = await api.get(
+        `/students/students-academic-details/?academic_year_id=${student.academicYearId}&student_id=${student.originalId}`
       );
       // The response for a single student might be an object, not an array. Adjust if needed.
       setStudentDetails(response.data.data[0] || response.data.data);
@@ -401,8 +455,7 @@ const AccountAdminDashboard = () => {
       } else if (paymentData.payment_method === 'visa' || paymentData.payment_method === 'link') {
         formData.append("transaction_number", paymentData.transaction_number);
       } else if (paymentData.payment_method === 'transfer') {
-        formData.append("transaction_number", paymentData.transaction_number);
-        formData.append("bank_name", paymentData.bank_name);
+        // Bank name and Transaction number removed for transfer per user request
       }
 
       if (paymentData.payment_link) {
@@ -421,8 +474,8 @@ const AccountAdminDashboard = () => {
         formData.append("payment_slip", paymentData.paymentSlip);
       }
 
-      const response = await axios.post(
-        `${import.meta.env.VITE_API_BASE_URL}/students/payment-history/`,
+      const response = await api.post(
+        `/students/payment-history/`,
         formData,
         {
           headers: {
@@ -451,8 +504,8 @@ const AccountAdminDashboard = () => {
         // Re-fetch current student details to update the signature section immediately
         if (selectedStudent) {
           try {
-            const detailRes = await axios.get(
-              `${import.meta.env.VITE_API_BASE_URL}/students/students-academic-details/?academic_year_id=${selectedStudent.academicYearId}&student_id=${selectedStudent.originalId}`
+            const detailRes = await api.get(
+              `/students/students-academic-details/?academic_year_id=${selectedStudent.academicYearId}&student_id=${selectedStudent.originalId}`
             );
             const updatedDetails = detailRes.data.data[0] || detailRes.data.data;
             setStudentDetails(updatedDetails);
@@ -482,8 +535,8 @@ const AccountAdminDashboard = () => {
   const handleDownloadReceipt = async (paymentId: string) => {
     setDownloadingReceiptId(paymentId);
     try {
-      const response = await axios.get(
-        `${import.meta.env.VITE_API_BASE_URL}/students/students/${paymentId}/download-payment-receipt/`,
+      const response = await api.get(
+        `/students/students/${paymentId}/download-payment-receipt/`,
         {
           responseType: 'arraybuffer', // Important to handle binary data
         }
@@ -816,13 +869,12 @@ const AccountAdminDashboard = () => {
       const page = pdfDoc.getPages()[0];
       const { width, height } = page.getSize();
 
-      // Place the payer's signature on the right side footer
-      // Authorized Signature (Right area - Payer's manual signature)
+      // Place the manual signature on the RIGHT side footer (Authorized Signatory)
       page.drawImage(adminImage, {
-        x: 255,      // Centered under the middle label
-        y: 80,       // Nudged down slightly for better placement
-        width: 90,   
-        height: 35,
+        x: 405,      // Slightly adjusted for better centering
+        y: 88,       // Moved UP (from 80) to avoid overlapping the name
+        width: 80,   // Reduced from 90
+        height: 28,  // Reduced from 35
       });
 
       // === 4. SAVE THE MODIFIED PDF AND PREPARE FOR UPLOAD ===
@@ -836,7 +888,7 @@ const AccountAdminDashboard = () => {
       formData.append("remaining_amount", signingPaymentInfo.pendingAmount.toFixed(2));
 
       // === 5. UPLOAD THE FINAL, SIGNED PDF AND DATA ===
-      await api.patch(
+      const patchResponse = await api.patch(
         `/students/payment-history/${signingPaymentInfo.paymentId}/`,
         formData
       );
@@ -863,6 +915,19 @@ const AccountAdminDashboard = () => {
       a.remove();
 
       closeSignatureModal();
+      
+      // Update the selected student's payment history locally so the UI updates immediately
+      if (selectedStudent && patchResponse.data?.data) {
+        const updatedPayment = patchResponse.data.data;
+        const updatedHistory = selectedStudent.paymentHistory.map((p: any) => 
+          p.id === signingPaymentInfo.paymentId ? updatedPayment : p
+        );
+        setSelectedStudent({
+          ...selectedStudent,
+          paymentHistory: updatedHistory
+        });
+      }
+
       await fetchStudentData('all'); // Refresh the data grid
 
     } catch (error) {
@@ -942,6 +1007,22 @@ const AccountAdminDashboard = () => {
 
   return (
     <div className="p-6 space-y-6 bg-gray-50 min-h-screen">
+      {/* Top Warning Banner for Missing Signature */}
+      {!hasSignature && (
+        <div className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded-xl shadow-sm flex items-center gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="bg-red-100 p-2 rounded-full">
+            <X className="h-5 w-5 text-red-600" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-red-800">Signature Required | التوقيع مطلوب</h3>
+            <p className="text-xs text-red-700 mt-0.5">
+              Your digital signature is not inserted. Please add it to enable document verification. | 
+              توقيعك الرقمي غير مدرج. يرجى إضافته لتمكين التحقق من المستندات.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -1472,7 +1553,7 @@ const AccountAdminDashboard = () => {
                           setPaymentData({
                             ...paymentData,
                             paymentStatus: e.target.value,
-                            amount: selected?.amount || "0.00"
+                            amount: selected ? parseFloat(selected.amount).toString() : "0"
                           });
                         }}
                         disabled={availableInstallments.length === 0}
@@ -1562,30 +1643,7 @@ const AccountAdminDashboard = () => {
                       </div>
                     )}
 
-                    {paymentData.payment_method === 'transfer' && (
-                      <>
-                        <div className="space-y-2">
-                          <Label htmlFor="bank_name">Bank Name</Label>
-                          <Input
-                            id="bank_name"
-                            value={paymentData.bank_name}
-                            onChange={(e) => setPaymentData({ ...paymentData, bank_name: e.target.value })}
-                            placeholder="Enter bank name"
-                            required
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="transaction_number">Transaction/Reference Number</Label>
-                          <Input
-                            id="transaction_number"
-                            value={paymentData.transaction_number}
-                            onChange={(e) => setPaymentData({ ...paymentData, transaction_number: e.target.value })}
-                            placeholder="Enter transaction number"
-                            required
-                          />
-                        </div>
-                      </>
-                    )}
+                    {/* Bank Name and Transaction Number fields removed for Account Transfer per user request */}
 
                     <div className="space-y-4 pt-2 border-t border-gray-100">
                       <div className="space-y-2">
@@ -1646,9 +1704,8 @@ const AccountAdminDashboard = () => {
                       const plan = selectedStudent.financialAgreement?.installment_plan;
                       const type = paymentData.paymentStatus;
 
-                      // User Rules for Read-Only (Fixed Values):
                       const isFixed =
-                        type === 'full' || // Matches getAvailablePayments values
+                        type === 'full' || 
                         type === 'first' ||
                         (plan === 'two' && type === 'second') ||
                         (plan === 'four' && type === 'fourth');
@@ -1659,18 +1716,22 @@ const AccountAdminDashboard = () => {
                           <Input
                             id="amount"
                             type="number"
-                            step="0.01"
                             min="0"
-                            max={(selectedStudent?.totalFees - selectedStudent?.paidAmount).toFixed(2)}
+                            max={Math.ceil(selectedStudent?.totalFees - selectedStudent?.paidAmount)}
                             value={paymentData.amount}
                             onChange={(e) => {
-                              if (isFixed) return; // Prevent change if fixed
+                              if (isFixed) return;
                               const maxAmount = selectedStudent?.totalFees - selectedStudent?.paidAmount;
-                              let enteredAmount = parseFloat(e.target.value) || 0;
-                              enteredAmount = parseFloat(enteredAmount.toFixed(2));
+                              let val = e.target.value;
+                              
+                              const numVal = parseFloat(val);
+                              if (!isNaN(numVal) && numVal > maxAmount) {
+                                val = maxAmount.toString();
+                              }
+                              
                               setPaymentData({
                                 ...paymentData,
-                                amount: Math.min(enteredAmount, maxAmount).toFixed(2)
+                                amount: val
                               });
                             }}
                             required
@@ -1751,10 +1812,10 @@ const AccountAdminDashboard = () => {
             </DialogHeader>
 
             <div className="py-4 flex flex-col items-center">
-              {/* Authorized Signatory (Manual Capture for Payer) */}
+              {/* Authorized Signatory Signature Pad */}
               <div className="space-y-2 w-full max-w-md">
                 <div className="flex justify-between items-center">
-                  <Label htmlFor="admin-sig">Authorized Signatory (Payer's Signature)</Label>
+                  <Label htmlFor="admin-sig">Authorized Signatory Signature | توقيع المستلم</Label>
                   <Button size="sm" variant="ghost" className="text-red-500" onClick={() => adminSigPad.current?.clear()}>Clear</Button>
                 </div>
                 <div className="border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">

@@ -81,11 +81,11 @@ const RELATIONSHIP_OPTIONS = [
 const RELATIONSHIP_CONFIG = {
     father: {
         title: "Father Details | بيانات الأب",
-        theme: "blue",
-        border: "border-blue-100",
-        bg: "bg-blue-50/20",
-        textColor: "text-blue-900",
-        iconBg: "bg-blue-600",
+        theme: "brown",
+        border: "border-[#662a14]/10",
+        bg: "bg-[#662a14]/5",
+        textColor: "text-[#662a14]",
+        iconBg: "bg-[#662a14]",
     },
     mother: {
         title: "Mother Details | بيانات الأم",
@@ -661,12 +661,14 @@ function StudentDetailsPage() {
                 if (!student.father?.phone1) newErrors.father_phone1 = "Required | مطلوب";
                 if (!student.father?.national_id && !student.father?.other_datas?.national_id) newErrors.father_national_id = "Required | مطلوب";
                 if (!student.father?.id_document && !student.father?.guardian_id_document) newErrors.father_id_document = "Required | مطلوب";
+                if (!student.father?.occupation) newErrors.father_occupation = "Required | مطلوب";
 
                 // 2. Mother Validation (Always required)
                 if (!student.mother?.name_en) newErrors.mother_name_en = "Required | مطلوب";
                 if (!student.mother?.phone1) newErrors.mother_phone1 = "Required | مطلوب";
                 if (!student.mother?.national_id && !student.mother?.other_datas?.national_id) newErrors.mother_national_id = "Required | مطلوب";
                 if (!student.mother?.id_document && !student.mother?.guardian_id_document) newErrors.mother_id_document = "Required | مطلوب";
+                if (!student.mother?.occupation) newErrors.mother_occupation = "Required | مطلوب";
 
                 if (rel === "relative") {
                     if (student.relative) {
@@ -674,12 +676,22 @@ function StudentDetailsPage() {
                         if (!student.relative.phone1) newErrors.relative_phone1 = "Required | مطلوب";
                         if (!student.relative.national_id) newErrors.relative_national_id = "Required | مطلوب";
                         if (!student.relative.id_document && !student.guardian?.id_document) newErrors.relative_id_document = "Required | مطلوب";
+                        if (!student.relative.occupation) newErrors.relative_occupation = "Required | مطلوب";
                     } else {
                         newErrors.relative_section = "Relative details are required when selected as responsible.";
                     }
                 }
 
                 if (!student.admission_class.id) newErrors.admission_class = "Required";
+
+                // Address / Location Validation
+                if (!student.address) newErrors.address = "Required | مطلوب";
+                if (!student.city) newErrors.city = "Required | مطلوب";
+                if (!student.state) newErrors.state = "Required | مطلوب";
+                if (!student.country) newErrors.country = "Required | مطلوب";
+                if (!student.postal_code) newErrors.postal_code = "Required | مطلوب";
+                if (!student.governance) newErrors.governance = "Required | مطلوب";
+                if (!student.neighborhood) newErrors.neighborhood = "Required | مطلوب";
             }
 
             if (Object.keys(newErrors).length > 0) {
@@ -1451,6 +1463,25 @@ function StudentDetailsPage() {
                                         )}
                                     </div>
                                 </div>
+
+                                <div className="bg-gray-50/50 p-2 rounded-xl border border-gray-100">
+                                    <Label className="text-[9px] uppercase tracking-wider text-gray-500 mb-1 block">Location Photo Map | الخارطة</Label>
+                                    <div className="flex items-center justify-between">
+                                        {(student.google_map_location_photo_url || student.google_map_location_photo) ? (
+                                            <div className="flex gap-1">
+                                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-blue-600" onClick={() => handleViewDocument(student.google_map_location_photo ? URL.createObjectURL(student.google_map_location_photo) : student.google_map_location_photo_url!)}><EyeIcon className="h-3 w-3" /></Button>
+                                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-gray-600" onClick={() => handleDownloadDocument(student.google_map_location_photo ? URL.createObjectURL(student.google_map_location_photo) : student.google_map_location_photo_url!, "LocationMap")}><DownloadIcon className="h-3 w-3" /></Button>
+                                            </div>
+                                        ) : <span className="text-[9px] text-gray-400 italic">Missing</span>}
+                                        {isEditing && (
+                                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-primary" onClick={() => {
+                                                const input = document.createElement("input"); input.type = "file"; input.accept = "image/*";
+                                                input.onchange = (e) => { const file = (e.target as HTMLInputElement).files?.[0]; if (file) handleChange("google_map_location_photo", file); };
+                                                input.click();
+                                            }}><PencilIcon className="h-3 w-3" /></Button>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -1458,77 +1489,85 @@ function StudentDetailsPage() {
                         <div className="flex-grow">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
 
-                                {/* Header Info */}
-                                <div className="space-y-1">
-                                    <Label className="text-gray-500 text-xs font-semibold">Admission Number</Label>
-                                    <p className="text-lg font-bold text-primary">{student.admission_number}</p>
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className="flex items-center gap-1 font-semibold text-xs">
-                                        Admission Class {isEditing && <span className="text-red-500">*</span>}
-                                    </Label>
-                                    {isEditing ? (
-                                        <>
-                                            <Select
-                                                value={student.admission_class?.id}
-                                                onValueChange={(value) => {
-                                                    const dept = departments.find(d => d.id === value);
-                                                    handleChange("admission_class", { id: value, department_name: dept?.department_name || "" });
-                                                }}
-                                            >
-                                                <SelectTrigger className={`h-10 rounded-lg bg-white ${fieldErrors.admission_class ? "border-red-500 ring-red-500" : "border-gray-200"}`}>
-                                                    <SelectValue placeholder="Select class" />
-                                                </SelectTrigger>
-                                                <SelectContent>{departments.map(d => <SelectItem key={d.id} value={d.id}>{d.department_name}</SelectItem>)}</SelectContent>
-                                            </Select>
-                                            {fieldErrors.admission_class && <p className="text-[9px] text-red-600 font-bold mt-1 flex items-center gap-1"><AlertCircle className="h-2.5 w-2.5" /> Required</p>}
-                                        </>
-                                    ) : <p className="text-gray-900 font-medium py-1">{student.admission_class?.department_name || "-"}</p>}
-                                </div>
+                            <div className="md:col-span-2 pt-4 border-t border-gray-100 mb-6">
+                                <h4 className="text-xl font-bold flex items-center gap-3 text-[#662a14] border-b-2 border-[#662a14]/10 pb-4 uppercase tracking-wider">
+                                    <span className="bg-[#662a14] text-white p-2 rounded-lg shadow-lg">
+                                        <UserPlus className="h-6 w-6" />
+                                    </span>
+                                    Student Basic Info | بيانات الطالب الأساسية
+                                </h4>
+                            </div>
 
-                                <div className="md:col-span-2 pt-2 border-t border-gray-50"></div>
+                            <div className="space-y-1">
+                                <Label className="text-gray-500 text-xs font-semibold">Admission Number</Label>
+                                <p className="text-lg font-bold text-primary">{student.admission_number}</p>
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="flex items-center gap-1 font-semibold text-xs">
+                                    Admission Class {isEditing && <span className="text-red-500">*</span>}
+                                </Label>
+                                {isEditing ? (
+                                    <>
+                                        <Select
+                                            value={student.admission_class?.id}
+                                            onValueChange={(value) => {
+                                                const dept = departments.find(d => d.id === value);
+                                                handleChange("admission_class", { id: value, department_name: dept?.department_name || "" });
+                                            }}
+                                        >
+                                            <SelectTrigger className={`h-10 rounded-lg bg-white ${fieldErrors.admission_class ? "border-red-500 ring-red-500" : "border-gray-200"}`}>
+                                                <SelectValue placeholder="Select class" />
+                                            </SelectTrigger>
+                                            <SelectContent>{departments.map(d => <SelectItem key={d.id} value={d.id}>{d.department_name}</SelectItem>)}</SelectContent>
+                                        </Select>
+                                        {fieldErrors.admission_class && <p className="text-[9px] text-red-600 font-bold mt-1 flex items-center gap-1"><AlertCircle className="h-2.5 w-2.5" /> Required</p>}
+                                    </>
+                                ) : <p className="text-gray-900 font-medium py-1">{student.admission_class?.department_name || "-"}</p>}
+                            </div>
+
+                            <div className="md:col-span-2 pt-2 border-t border-gray-50"></div>
 
                                 {/* Name Row 1: First Name */}
-                                <div className="space-y-1">
-                                    <Label className="flex items-center gap-1 text-xs">STUDENT NAME (English) {isEditing && <span className="text-red-500">*</span>}</Label>
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-1 text-xs font-semibold">STUDENT NAME (English) {isEditing && <span className="text-red-500">*</span>}</Label>
                                     {isEditing ? (
                                         <>
                                             <Input
                                                 value={student.en_first_name}
                                                 onChange={(e) => handleChange("en_first_name", e.target.value)}
-                                                className={`h-10 rounded-lg ${fieldErrors.en_first_name ? "border-red-500" : "border-gray-200"}`}
+                                                className={`h-11 rounded-xl bg-white shadow-sm ${fieldErrors.en_first_name ? "border-red-500 ring-1 ring-red-500" : "border-gray-200"}`}
                                             />
-                                            {fieldErrors.en_first_name && <p className="text-[9px] text-red-600 font-bold mt-1 flex items-center gap-1"><AlertCircle className="h-2.5 w-2.5" /> Required</p>}
+                                            {fieldErrors.en_first_name && <p className="text-[10px] text-red-600 font-bold mt-1 flex items-center gap-1"><AlertCircle className="h-3 w-3" /> Required</p>}
                                         </>
                                     ) : <p className="text-gray-900 font-medium py-1">{student.en_first_name || "-"}</p>}
                                 </div>
 
-                                <div className="space-y-1 text-right" dir="rtl">
-                                    <Label className="flex items-center gap-1 justify-end text-xs">STUDENT NAME | الاسم الأول (عربي) {isEditing && <span className="text-red-500">*</span>}</Label>
+                                <div className="space-y-2 text-right" dir="rtl">
+                                    <Label className="flex items-center gap-1 justify-end text-xs font-semibold">STUDENT NAME | الاسم الأول (عربي) {isEditing && <span className="text-red-500">*</span>}</Label>
                                     {isEditing ? (
                                         <>
                                             <Input
                                                 value={student.ar_first_name}
                                                 onChange={(e) => handleChange("ar_first_name", e.target.value)}
-                                                className={`h-10 rounded-lg text-right ${fieldErrors.ar_first_name ? "border-red-500" : "border-gray-200"}`}
+                                                className={`h-11 rounded-xl bg-white shadow-sm text-right ${fieldErrors.ar_first_name ? "border-red-500 ring-1 ring-red-500" : "border-gray-200"}`}
                                             />
-                                            {fieldErrors.ar_first_name && <p className="text-[9px] text-red-600 font-bold mt-1 flex items-center gap-1 justify-end"><AlertCircle className="h-2.5 w-2.5" /> Required</p>}
+                                            {fieldErrors.ar_first_name && <p className="text-[10px] text-red-600 font-bold mt-1 flex items-center gap-1 justify-end"><AlertCircle className="h-3 w-3" /> Required</p>}
                                         </>
                                     ) : <p className="text-gray-900 font-medium py-1">{student.ar_first_name || "-"}</p>}
                                 </div>
 
                                 {/* Name Row 2: Middle Name / Father Name */}
-                                <div className="space-y-1">
-                                    <Label className="text-xs">FATHER NAME (English)</Label>
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-semibold">FATHER NAME (English)</Label>
                                     {isEditing ? (
-                                        <Input value={student.en_middle_name} onChange={(e) => handleChange("en_middle_name", e.target.value)} className="h-10 rounded-lg border-gray-200" />
+                                        <Input value={student.en_middle_name} onChange={(e) => handleChange("en_middle_name", e.target.value)} className="h-11 rounded-xl bg-white shadow-sm border-gray-200" />
                                     ) : <p className="text-gray-900 font-medium py-1">{student.en_middle_name || "-"}</p>}
                                 </div>
 
-                                <div className="space-y-1 text-right" dir="rtl">
-                                    <Label className="flex justify-end text-xs text-right">FATHER NAME | اسم الأب (عربي)</Label>
+                                <div className="space-y-2 text-right" dir="rtl">
+                                    <Label className="flex justify-end text-xs text-right font-semibold">FATHER NAME | اسم الأب (عربي)</Label>
                                     {isEditing ? (
-                                        <Input value={student.ar_middle_name} onChange={(e) => handleChange("ar_middle_name", e.target.value)} className="h-10 rounded-lg text-right border-gray-200" />
+                                        <Input value={student.ar_middle_name} onChange={(e) => handleChange("ar_middle_name", e.target.value)} className="h-11 rounded-xl bg-white shadow-sm text-right border-gray-200" />
                                     ) : <p className="text-gray-900 font-medium py-1">{student.ar_middle_name || "-"}</p>}
                                 </div>
 
@@ -1548,30 +1587,30 @@ function StudentDetailsPage() {
                                 </div>
 
                                 {/* Name Row 4: Last Name (Family) */}
-                                <div className="space-y-1">
-                                    <Label className="flex items-center gap-1 text-xs">LAST NAME / FAMILY NAME (English) {isEditing && <span className="text-red-500">*</span>}</Label>
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-1 text-xs font-semibold">LAST NAME / FAMILY NAME (English) {isEditing && <span className="text-red-500">*</span>}</Label>
                                     {isEditing ? (
                                         <>
                                             <Input
                                                 value={student.en_last_name}
                                                 onChange={(e) => handleChange("en_last_name", e.target.value)}
-                                                className={`h-10 rounded-lg ${fieldErrors.en_last_name ? "border-red-500" : "border-gray-200"}`}
+                                                className={`h-11 rounded-xl bg-white shadow-sm ${fieldErrors.en_last_name ? "border-red-500 ring-1 ring-red-500" : "border-gray-200"}`}
                                             />
-                                            {fieldErrors.en_last_name && <p className="text-[9px] text-red-600 font-bold mt-1 flex items-center gap-1"><AlertCircle className="h-2.5 w-2.5" /> Required</p>}
+                                            {fieldErrors.en_last_name && <p className="text-[10px] text-red-600 font-bold mt-1 flex items-center gap-1"><AlertCircle className="h-3 w-3" /> Required</p>}
                                         </>
                                     ) : <p className="text-gray-900 font-medium py-1">{student.en_last_name || "-"}</p>}
                                 </div>
 
-                                <div className="space-y-1 text-right" dir="rtl">
-                                    <Label className="flex items-center gap-1 justify-end text-xs">LAST NAME / FAMILY NAME | اسم العائلة (عربي) {isEditing && <span className="text-red-500">*</span>}</Label>
+                                <div className="space-y-2 text-right" dir="rtl">
+                                    <Label className="flex items-center gap-1 justify-end text-xs font-semibold">LAST NAME / FAMILY NAME | اسم العائلة (عربي) {isEditing && <span className="text-red-500">*</span>}</Label>
                                     {isEditing ? (
                                         <>
                                             <Input
                                                 value={student.ar_last_name}
                                                 onChange={(e) => handleChange("ar_last_name", e.target.value)}
-                                                className={`h-10 rounded-lg text-right ${fieldErrors.ar_last_name ? "border-red-500" : "border-gray-200"}`}
+                                                className={`h-11 rounded-xl bg-white shadow-sm text-right ${fieldErrors.ar_last_name ? "border-red-500 ring-1 ring-red-500" : "border-gray-200"}`}
                                             />
-                                            {fieldErrors.ar_last_name && <p className="text-[9px] text-red-600 font-bold mt-1 flex items-center gap-1 justify-end"><AlertCircle className="h-3 w-3" /> Required</p>}
+                                            {fieldErrors.ar_last_name && <p className="text-[10px] text-red-600 font-bold mt-1 flex items-center gap-1 justify-end"><AlertCircle className="h-3 w-3" /> Required</p>}
                                         </>
                                     ) : <p className="text-gray-900 font-medium py-1">{student.ar_last_name || "-"}</p>}
                                 </div>
@@ -1579,7 +1618,7 @@ function StudentDetailsPage() {
                                 <div className="md:col-span-2 pt-2 border-t border-gray-50"></div>
 
                                 {/* General Personal Details */}
-                                <div className="space-y-1">
+                                <div className="space-y-2">
                                     <Label className="flex items-center gap-1 font-semibold text-xs">Date of Birth | تاريخ الميلاد <span className="text-red-500">*</span></Label>
                                     {isEditing ? (
                                         <div className="space-y-1">
@@ -1587,30 +1626,30 @@ function StudentDetailsPage() {
                                                 type="date"
                                                 value={student.date_of_birth}
                                                 onChange={(e) => handleChange("date_of_birth", e.target.value)}
-                                                className={`h-10 rounded-lg bg-white ${fieldErrors.date_of_birth ? "border-red-500 border-2" : "border-gray-200"}`}
+                                                className={`h-11 rounded-xl bg-white shadow-sm ${fieldErrors.date_of_birth ? "border-red-500 border-2" : "border-gray-200"}`}
                                             />
-                                            {fieldErrors.date_of_birth && <p className="text-[10px] text-red-600 font-bold mt-1 flex items-center gap-1"><AlertCircle className="h-2.5 w-2.5" /> Date of birth is required | تاريخ الميلاد مطلوب</p>}
+                                            {fieldErrors.date_of_birth && <p className="text-[10px] text-red-600 font-bold mt-1 flex items-center gap-1"><AlertCircle className="h-3 w-3" /> Date of birth is required | تاريخ الميلاد مطلوب</p>}
                                         </div>
                                     ) : <p className="text-gray-900 font-medium py-1">{student.date_of_birth ? `${student.date_of_birth} (${calculateAge(student.date_of_birth)} years)` : "-"}</p>}
                                 </div>
 
-                                <div className="space-y-1">
-                                    <Label className="flex items-center gap-1 font-semibold text-xs">Gender | الجنس <span className="text-red-500">*</span></Label>
-                                    {isEditing ? (
-                                        <div className="space-y-1">
-                                            <Select value={student.gender} onValueChange={(value) => handleChange("gender", value)}>
-                                                <SelectTrigger className={`h-10 rounded-lg bg-white ${fieldErrors.gender ? "border-red-500 border-2 shadow-[0_0_0_1px_rgba(239,68,68,0.1)]" : "border-gray-200"}`}>
-                                                    <SelectValue placeholder="Select gender" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="Male">Male | ذكر</SelectItem>
-                                                    <SelectItem value="Female">Female | أنثى</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                            {fieldErrors.gender && <p className="text-[10px] text-red-600 font-bold mt-1 flex items-center gap-1"><AlertCircle className="h-2.5 w-2.5" /> Gender is required | الجنس مطلوب</p>}
-                                        </div>
-                                    ) : <p className="text-gray-900 font-medium py-1">{student.gender === "Male" ? "Male | ذكر" : (student.gender === "Female" ? "Female | أنثى" : (student.gender || "-"))}</p>}
-                                </div>
+                                <div className="space-y-2">
+                                   <Label className="flex items-center gap-1 font-semibold text-xs">Gender | الجنس <span className="text-red-500">*</span></Label>
+                                   {isEditing ? (
+                                       <div className="space-y-1">
+                                           <Select value={student.gender} onValueChange={(value) => handleChange("gender", value)}>
+                                               <SelectTrigger className={`h-11 rounded-xl bg-white shadow-sm ${fieldErrors.gender ? "border-red-500 border-2 shadow-[0_0_0_1px_rgba(239,68,68,0.1)]" : "border-gray-200"}`}>
+                                                   <SelectValue placeholder="Select gender" />
+                                               </SelectTrigger>
+                                               <SelectContent>
+                                                   <SelectItem value="Male">Male | ذكر</SelectItem>
+                                                   <SelectItem value="Female">Female | أنثى</SelectItem>
+                                               </SelectContent>
+                                           </Select>
+                                           {fieldErrors.gender && <p className="text-[10px] text-red-600 font-bold mt-1 flex items-center gap-1"><AlertCircle className="h-3 w-3" /> Gender is required | الجنس مطلوب</p>}
+                                       </div>
+                                   ) : <p className="text-gray-900 font-medium py-1">{student.gender === "Male" ? "Male | ذكر" : (student.gender === "Female" ? "Female | أنثى" : (student.gender || "-"))}</p>}
+                               </div>
 
                                 <div className="space-y-1">
                                     <Label className="flex items-center gap-1 font-semibold text-xs">Religion {isEditing && <span className="text-red-500">*</span>}</Label>
@@ -1630,15 +1669,15 @@ function StudentDetailsPage() {
                                     ) : <p className="text-gray-900 font-medium py-1">{student.religion || "-"}</p>}
                                 </div>
 
-                                <div className="space-y-1">
-                                    <Label className="flex items-center gap-1 font-semibold text-xs">Nationality {isEditing && <span className="text-red-500">*</span>}</Label>
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-1 font-semibold text-xs">Nationality | الجنسية {isEditing && <span className="text-red-500">*</span>}</Label>
                                     {isEditing ? (
                                         <>
                                             <Select value={student.nationality} onValueChange={(value) => handleChange("nationality", value)}>
-                                                <SelectTrigger className={`h-10 rounded-lg bg-white ${fieldErrors.nationality ? "border-red-500 border-2" : "border-gray-200"}`}><SelectValue placeholder="Select nationality" /></SelectTrigger>
+                                                <SelectTrigger className={`h-11 rounded-xl bg-white shadow-sm border-gray-200 ${fieldErrors.nationality ? "border-red-500 border-2" : ""}`}><SelectValue placeholder="Select nationality" /></SelectTrigger>
                                                 <SelectContent>{countryList.map(c => <SelectItem key={c.code} value={c.name}>{c.name}</SelectItem>)}</SelectContent>
                                             </Select>
-                                            {fieldErrors.nationality && <p className="text-[9px] text-red-600 font-bold mt-1 flex items-center gap-1"><AlertCircle className="h-2.5 w-2.5" /> Required | مطلوب</p>}
+                                            {fieldErrors.nationality && <p className="text-[10px] text-red-600 font-bold mt-1 flex items-center gap-1"><AlertCircle className="h-3 w-3" /> Required | مطلوب</p>}
                                         </>
                                     ) : <p className="text-gray-900 font-medium py-1">{student.nationality || "-"}</p>}
                                 </div>
@@ -1666,41 +1705,90 @@ function StudentDetailsPage() {
                                 </div>
 
                                 {/* Address Section */}
-                                <div className="md:col-span-2 pt-4 border-t border-gray-50 flex items-center justify-between">
-                                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Address Information | العنوان</h4>
-                                    <Navigation className="h-4 w-4 text-gray-300" />
+                                <div className="md:col-span-2 pt-8 border-t border-gray-100 mt-6 mb-4">
+                                    <h4 className="text-xl font-bold flex items-center gap-3 text-[#662a14] border-b-2 border-[#662a14]/10 pb-4 uppercase tracking-wider">
+                                        <span className="bg-[#662a14] text-white p-2 rounded-lg shadow-lg">
+                                            <Navigation className="h-6 w-6" />
+                                        </span>
+                                        Address Information | بيانات السكن والعنوان
+                                    </h4>
                                 </div>
 
                                 <div className="md:col-span-2 space-y-1">
-                                    <Label className="text-xs">Street / Address | الشارع</Label>
+                                    <Label className="flex items-center gap-1 font-semibold text-xs text-gray-700">Street / Address | الشارع <span className="text-red-500">*</span></Label>
                                     {isEditing ? (
-                                        <Input value={student.address} onChange={(e) => handleChange("address", e.target.value)} className="h-10 rounded-lg border-gray-200" />
+                                        <div className="space-y-1">
+                                            <Input 
+                                                value={student.address} 
+                                                onChange={(e) => handleChange("address", e.target.value)} 
+                                                className={`h-10 rounded-lg ${fieldErrors.address ? "border-red-500 border-2" : "border-gray-200"}`} 
+                                            />
+                                            {fieldErrors.address && <p className="text-[10px] text-red-600 font-bold mt-1 flex items-center gap-1"><AlertCircle className="h-2.5 w-2.5" /> Required | مطلوب</p>}
+                                        </div>
                                     ) : <p className="text-gray-900 font-medium py-1">{student.address || "-"}</p>}
                                 </div>
 
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:col-span-2">
                                     <div className="space-y-1">
-                                        <Label className="text-[10px]">City</Label>
-                                        {isEditing ? <Input value={student.city} onChange={(e) => handleChange("city", e.target.value)} className="h-9 rounded-lg" /> : <p className="py-1">{student.city || "-"}</p>}
+                                        <Label className="text-[10px]">City <span className="text-red-500">*</span></Label>
+                                        {isEditing ? (
+                                            <div className="space-y-1">
+                                                <Input value={student.city} onChange={(e) => handleChange("city", e.target.value)} className={`h-9 rounded-lg ${fieldErrors.city ? "border-red-500 border-2" : "border-gray-200"}`} />
+                                                {fieldErrors.city && <p className="text-[9px] text-red-600 font-bold mt-0.5">Required</p>}
+                                            </div>
+                                        ) : <p className="py-1">{student.city || "-"}</p>}
                                     </div>
                                     <div className="space-y-1">
-                                        <Label className="text-[10px]">State</Label>
-                                        {isEditing ? <Input value={student.state} onChange={(e) => handleChange("state", e.target.value)} className="h-9 rounded-lg" /> : <p className="py-1">{student.state || "-"}</p>}
+                                        <Label className="text-[10px]">State <span className="text-red-500">*</span></Label>
+                                        {isEditing ? (
+                                            <div className="space-y-1">
+                                                <Input value={student.state} onChange={(e) => handleChange("state", e.target.value)} className={`h-9 rounded-lg ${fieldErrors.state ? "border-red-500 border-2" : "border-gray-200"}`} />
+                                                {fieldErrors.state && <p className="text-[9px] text-red-600 font-bold mt-0.5">Required</p>}
+                                            </div>
+                                        ) : <p className="py-1">{student.state || "-"}</p>}
                                     </div>
                                     <div className="space-y-1">
-                                        <Label className="text-[10px]">Governance</Label>
-                                        {isEditing ? <Input value={student.governance} onChange={(e) => handleChange("governance", e.target.value)} className="h-9 rounded-lg" /> : <p className="py-1">{student.governance || "-"}</p>}
+                                        <Label className="text-[10px]">Governance <span className="text-red-500">*</span></Label>
+                                        {isEditing ? (
+                                            <div className="space-y-1">
+                                                <Input value={student.governance} onChange={(e) => handleChange("governance", e.target.value)} className={`h-9 rounded-lg ${fieldErrors.governance ? "border-red-500 border-2" : "border-gray-200"}`} />
+                                                {fieldErrors.governance && <p className="text-[9px] text-red-600 font-bold mt-0.5">Required</p>}
+                                            </div>
+                                        ) : <p className="py-1">{student.governance || "-"}</p>}
                                     </div>
                                     <div className="space-y-1">
-                                        <Label className="text-[10px]">Postal Code</Label>
-                                        {isEditing ? <Input value={student.postal_code} onChange={(e) => handleChange("postal_code", e.target.value)} className="h-9 rounded-lg" /> : <p className="py-1">{student.postal_code || "-"}</p>}
+                                        <Label className="text-[10px]">Postal Code <span className="text-red-500">*</span></Label>
+                                        {isEditing ? (
+                                            <div className="space-y-1">
+                                                <Input value={student.postal_code} onChange={(e) => handleChange("postal_code", e.target.value)} className={`h-9 rounded-lg ${fieldErrors.postal_code ? "border-red-500 border-2" : "border-gray-200"}`} />
+                                                {fieldErrors.postal_code && <p className="text-[9px] text-red-600 font-bold mt-0.5">Required</p>}
+                                            </div>
+                                        ) : <p className="py-1">{student.postal_code || "-"}</p>}
                                     </div>
+                                </div>
+
+                                <div className="md:col-span-2 space-y-1">
+                                    <Label className="flex items-center gap-1 font-semibold text-xs">Country | الدولة <span className="text-red-500">*</span></Label>
+                                    {isEditing ? (
+                                        <div className="space-y-1">
+                                            <Select value={student.country} onValueChange={(value) => handleChange("country", value)}>
+                                                <SelectTrigger className={`h-10 rounded-lg bg-white ${fieldErrors.country ? "border-red-500 border-2" : "border-gray-200"}`}><SelectValue placeholder="Select country" /></SelectTrigger>
+                                                <SelectContent>{countryList.map(c => <SelectItem key={c.code} value={c.name}>{c.name}</SelectItem>)}</SelectContent>
+                                            </Select>
+                                            {fieldErrors.country && <p className="text-[10px] text-red-600 font-bold mt-1 flex items-center gap-1"><AlertCircle className="h-2.5 w-2.5" /> Required | مطلوب</p>}
+                                        </div>
+                                    ) : <p className="text-gray-900 font-medium py-1">{student.country || "-"}</p>}
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4 md:col-span-2">
                                     <div className="space-y-1">
-                                        <Label className="text-[10px]">Neighborhood</Label>
-                                        {isEditing ? <Input value={student.neighborhood} onChange={(e) => handleChange("neighborhood", e.target.value)} className="h-9 rounded-lg" /> : <p className="py-1">{student.neighborhood || "-"}</p>}
+                                        <Label className="text-[10px]">Neighborhood <span className="text-red-500">*</span></Label>
+                                        {isEditing ? (
+                                            <div className="space-y-1">
+                                                <Input value={student.neighborhood} onChange={(e) => handleChange("neighborhood", e.target.value)} className={`h-9 rounded-lg ${fieldErrors.neighborhood ? "border-red-500 border-2" : "border-gray-200"}`} />
+                                                {fieldErrors.neighborhood && <p className="text-[9px] text-red-600 font-bold mt-0.5">Required</p>}
+                                            </div>
+                                        ) : <p className="py-1">{student.neighborhood || "-"}</p>}
                                     </div>
                                     <div className="space-y-1 flex gap-2">
                                         <div className="flex-grow">
@@ -1730,24 +1818,22 @@ function StudentDetailsPage() {
                                 </div>
 
                                 {/* Academic & Special Needs */}
-                                <div className="md:col-span-2 pt-4 border-t border-gray-50">
-                                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Academic Information</h4>
+                                <div className="md:col-span-2 pt-8 border-t border-gray-100 mt-6 mb-4">
+                                    <h4 className="text-xl font-bold flex items-center gap-3 text-[#662a14] border-b-2 border-[#662a14]/10 pb-4 uppercase tracking-wider">
+                                        <span className="bg-[#662a14] text-white p-2 rounded-lg shadow-lg">
+                                            <FileCheck className="h-6 w-6" />
+                                        </span>
+                                        Academic Information | البيانات الأكاديمية
+                                    </h4>
                                 </div>
 
-                                <div className="space-y-1">
-                                    <Label className="text-[10px]">Admission Date | تاريخ القبول</Label>
-                                    {isEditing ? (
-                                        <div className="space-y-1">
-                                            <Input
-                                                type="date"
-                                                value={student.admission_date}
-                                                onChange={(e) => handleChange("admission_date", e.target.value)}
-                                                className="h-9 rounded-lg border-gray-200"
-                                                readOnly={student.is_verified_registration_officer}
-                                            />
-                                        </div>
-                                    ) : <p className="py-1">{student.admission_date || "-"}</p>}
-                                </div>
+                                {/* Admission Date (Automatic) */}
+                                {(!isEditing || !student.isDraft) && (
+                                    <div className="space-y-1">
+                                        <Label className="text-[10px]">Admission Date | تاريخ القبول</Label>
+                                        <p className="py-1 font-medium text-gray-900">{student.admission_date || "-"}</p>
+                                    </div>
+                                )}
 
                                 <div className="space-y-1">
                                     <Label className="text-[10px]">Previous School</Label>
@@ -1838,21 +1924,6 @@ function StudentDetailsPage() {
                                     {isEditing ? <Input value={student.emergency_contact} onChange={(e) => handleChange("emergency_contact", e.target.value)} className="h-9 rounded-lg" /> : <p className="py-1">{student.emergency_contact || "-"}</p>}
                                 </div>
 
-                                <div className="space-y-1">
-                                    <Label className="text-[10px]">Location Photo Map</Label>
-                                    <div className="flex items-center gap-2">
-                                        {(student.google_map_location_photo_url || student.google_map_location_photo) ? (
-                                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-blue-600" onClick={() => handleViewDocument(student.google_map_location_photo ? URL.createObjectURL(student.google_map_location_photo) : student.google_map_location_photo_url!)}><EyeIcon className="h-4 w-4" /></Button>
-                                        ) : <span className="text-[10px] text-gray-400 italic">None</span>}
-                                        {isEditing && (
-                                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-primary" onClick={() => {
-                                                const input = document.createElement("input"); input.type = "file"; input.accept = "image/*";
-                                                input.onchange = (e) => { const file = (e.target as HTMLInputElement).files?.[0]; if (file) handleChange("google_map_location_photo", file); };
-                                                input.click();
-                                            }}><Camera className="h-4 w-4" /></Button>
-                                        )}
-                                    </div>
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -2136,13 +2207,16 @@ function StudentDetailsPage() {
 
                                                 {/* Occupation */}
                                                 <div className="space-y-1">
-                                                    <Label className="font-semibold text-xs text-gray-700">Occupation | المهنة</Label>
+                                                    <Label className="flex items-center gap-1 font-semibold text-xs text-gray-700">Occupation | المهنة {(type === 'father' || type === 'mother' || isResponsible) && <span className="text-red-500">*</span>}</Label>
                                                     {isEditing ? (
-                                                        <Input
-                                                            value={safeData.occupation || ""}
-                                                            onChange={(e) => handler("occupation", e.target.value)}
-                                                            className="h-10 rounded-lg border-gray-200"
-                                                        />
+                                                        <div className="space-y-1">
+                                                            <Input
+                                                                value={safeData.occupation || ""}
+                                                                onChange={(e) => handler("occupation", e.target.value)}
+                                                                className={`h-10 rounded-lg ${fieldErrors[`${type}_occupation`] ? "border-red-500 border-2" : "border-gray-200"}`}
+                                                            />
+                                                            {fieldErrors[`${type}_occupation`] && <p className="text-[10px] text-red-600 font-bold mt-1 flex items-center gap-1"><AlertCircle className="h-2.5 w-2.5" /> Required | مطلوب</p>}
+                                                        </div>
                                                     ) : (
                                                         <p className="text-gray-900 font-medium py-1">{safeData.occupation || "-"}</p>
                                                     )}
@@ -2589,10 +2663,10 @@ function StudentDetailsPage() {
                     <Button
                         onClick={() => handleSave(true)}
                         disabled={isSaving}
-                        className="w-full bg-primary hover:bg-primary/90 text-white shadow-xl shadow-primary/20 h-14 text-lg font-bold transition-all duration-300 transform hover:scale-[1.01] rounded-2xl"
+                        className="w-full bg-[#662a14] hover:bg-[#662a14]/90 text-white shadow-xl shadow-brown-900/20 h-14 text-lg font-bold transition-all duration-300 transform hover:scale-[1.01] rounded-2xl uppercase tracking-wider"
                     >
                         {isSaving ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <CheckCircle2 className="h-5 w-5 mr-3" />}
-                        Save | حفظ
+                        {student.isDraft ? "FINALIZE & SUBMIT | إكمال وإرسال" : "UPDATE STUDENT RECORD | تحديث سجل الطالب"}
                     </Button>
                 </div>
             )}

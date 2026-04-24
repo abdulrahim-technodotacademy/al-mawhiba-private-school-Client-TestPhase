@@ -57,7 +57,12 @@ const SignatureManagementModal = ({ isOpen, onClose }: SignatureManagementModalP
 
   const handleSave = async () => {
     if (!signaturePad || signaturePad.isEmpty()) {
-      Swal.fire({ title: "Empty Pad", text: "Please draw your signature first", icon: "warning" });
+      Swal.fire({ 
+        title: "Empty Pad", 
+        text: "Please draw your signature first", 
+        icon: "warning",
+        target: "#signature-modal-content"
+      });
       return;
     }
 
@@ -83,14 +88,28 @@ const SignatureManagementModal = ({ isOpen, onClose }: SignatureManagementModalP
       if (response.data) {
         setSignatureUrl(response.data.signature_image);
         setView("view");
-        Swal.fire({ title: "Success!", text: "Signature saved successfully.", icon: "success", timer: 2000, showConfirmButton: false });
+        
+        // Broadcast that signature has been updated
+        window.dispatchEvent(new CustomEvent('signatureUpdated', { 
+          detail: { hasSignature: true, signatureUrl: response.data.signature_image } 
+        }));
+
+        Swal.fire({ 
+          title: "Success!", 
+          text: "Signature saved successfully.", 
+          icon: "success", 
+          timer: 2000, 
+          showConfirmButton: false,
+          target: "#signature-modal-content"
+        });
       }
     } catch (error: any) {
       console.error("Error saving signature:", error);
       Swal.fire({ 
         title: "Save Failed", 
         text: error.response?.data?.error || "We couldn't save your signature. Please try again.", 
-        icon: "error" 
+        icon: "error",
+        target: "#signature-modal-content"
       });
     } finally {
       setIsSaving(false);
@@ -105,6 +124,7 @@ const SignatureManagementModal = ({ isOpen, onClose }: SignatureManagementModalP
       showCancelButton: true,
       confirmButtonColor: "#ef4444",
       confirmButtonText: "Yes, Clear It",
+      target: "#signature-modal-content"
     });
 
     if (result.isConfirmed) {
@@ -113,9 +133,26 @@ const SignatureManagementModal = ({ isOpen, onClose }: SignatureManagementModalP
         await api.delete("/accounts/signature/");
         setSignatureUrl(null);
         setView("create");
-        Swal.fire({ title: "Cleared", text: "Signature removed.", icon: "success", timer: 1500 });
+
+        // Broadcast that signature has been removed
+        window.dispatchEvent(new CustomEvent('signatureUpdated', { 
+          detail: { hasSignature: false, signatureUrl: null } 
+        }));
+
+        Swal.fire({ 
+          title: "Cleared", 
+          text: "Signature removed.", 
+          icon: "success", 
+          timer: 1500,
+          target: "#signature-modal-content"
+        });
       } catch (error) {
-        Swal.fire("Error", "Failed to delete signature", "error");
+        Swal.fire({
+          title: "Error", 
+          text: "Failed to delete signature", 
+          icon: "error",
+          target: "#signature-modal-content"
+        });
       } finally {
         setIsLoading(false);
       }
@@ -124,7 +161,7 @@ const SignatureManagementModal = ({ isOpen, onClose }: SignatureManagementModalP
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden bg-white shadow-2xl border-0 ring-1 ring-slate-200">
+      <DialogContent id="signature-modal-content" className="sm:max-w-[500px] p-0 overflow-hidden bg-white shadow-2xl border-0 ring-1 ring-slate-200">
         <DialogHeader className="p-6 bg-slate-900 border-b border-slate-800">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">

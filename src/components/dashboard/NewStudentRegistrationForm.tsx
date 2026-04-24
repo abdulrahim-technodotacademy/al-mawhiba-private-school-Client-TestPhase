@@ -218,12 +218,14 @@ const NewStudentRegistrationForm = () => {
       if (!formData.father.phone) newErrors.father_phone = "Father phone is required | هاتف الأب مطلوب";
       if (!formData.father.national_id) newErrors.father_national_id = "Father ID Number is required | الرقم المدني للأب مطلوب";
       if (!formData.father.id_document) newErrors.father_id_document = "Father ID document is required | وثيقة هوية الأب مطلوبة";
+      if (!formData.father.occupation) newErrors.father_occupation = "Father occupation is required | وظيفة الأب مطلوبة";
 
       // Validate Mother details (always required)
       if (!formData.mother.name_en) newErrors.mother_name_en = "Mother name (EN) is required | اسم الأم مطلوب";
       if (!formData.mother.phone) newErrors.mother_phone = "Mother phone is required | هاتف الأم مطلوب";
       if (!formData.mother.national_id) newErrors.mother_national_id = "Mother ID Number is required | الرقم المدني للأم مطلوب";
       if (!formData.mother.id_document) newErrors.mother_id_document = "Mother ID document is required | وثيقة هوية الأم مطلوبة";
+      if (!formData.mother.occupation) newErrors.mother_occupation = "Mother occupation is required | وظيفة الأم مطلوبة";
 
       // Validate Relative details (only if relative selected)
       if (formData.relationship === 'relative') {
@@ -231,6 +233,7 @@ const NewStudentRegistrationForm = () => {
         if (!formData.relative.phone) newErrors.relative_phone = "Relative phone is required | هاتف القريب مطلوب";
         if (!formData.relative.national_id) newErrors.relative_national_id = "Relative ID Number is required | الرقم المدني للقريب مطلوب";
         if (!formData.relative.id_document) newErrors.relative_id_document = "Relative ID document is required | وثيقة هوية القريب مطلوبة";
+        if (!formData.relative.occupation) newErrors.relative_occupation = "Relative occupation is required | وظيفة القريب مطلوبة";
       }
 
       // File validations
@@ -977,14 +980,16 @@ const NewStudentRegistrationForm = () => {
 
                       {/* Occupation */}
                       <div className="space-y-2">
-                        <Label htmlFor={`${config.key}_occupation`}>{config.label} Occupation | الوظيفة</Label>
+                        <Label htmlFor={`${config.key}_occupation`}>{config.label} Occupation | الوظيفة <span className="text-red-500">*</span></Label>
                         <Input
                           id={`${config.key}_occupation`}
                           value={formData[config.key].occupation}
                           onChange={(e) => updateGuardian(config.key, 'occupation', e.target.value)}
                           placeholder="Occupation"
-                          className={`bg-white ${config.inputBorder} ${config.focusBorder} border-gray-200`}
+                          required
+                          className={`bg-white ${config.inputBorder} ${config.focusBorder} border-gray-200 ${errors[`${config.key}_occupation`] ? 'border-red-500' : ''}`}
                         />
+                        {errors[`${config.key}_occupation`] && <p className="text-red-500 text-xs font-semibold">{errors[`${config.key}_occupation`]}</p>}
                       </div>
 
                       {/* Passport Number */}

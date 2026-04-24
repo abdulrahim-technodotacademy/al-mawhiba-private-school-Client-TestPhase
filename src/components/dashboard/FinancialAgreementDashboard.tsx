@@ -35,6 +35,7 @@ import {
   Settings2,
   FileDown,
   Check,
+  X,
 } from "lucide-react";
 import React, { useEffect, useState } from "react";
 
@@ -269,6 +270,7 @@ const FinancialAgreementDashboard = () => {
   const [isEditMode, setIsEditMode] = useState(true);
   const [guardianSignaturePad, setGuardianSignaturePad] = useState(null);
   const [savedOfficerSignature, setSavedOfficerSignature] = useState<string | null>(null);
+  const [hasSignature, setHasSignature] = useState<boolean>(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState("");
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
@@ -452,6 +454,7 @@ const FinancialAgreementDashboard = () => {
         });
         if (response.ok) {
           const data = await response.json();
+          setHasSignature(data.has_signature);
           if (data.signature_image) {
             setSavedOfficerSignature(data.signature_image);
           }
@@ -461,6 +464,17 @@ const FinancialAgreementDashboard = () => {
       }
     };
     fetchOfficerSignature();
+
+    const handleSignatureUpdate = (event: any) => {
+      setHasSignature(event.detail.hasSignature);
+      setSavedOfficerSignature(event.detail.signatureUrl);
+    };
+
+    window.addEventListener('signatureUpdated', handleSignatureUpdate);
+
+    return () => {
+      window.removeEventListener('signatureUpdated', handleSignatureUpdate);
+    };
   }, []);
 
 
@@ -1155,7 +1169,23 @@ const FinancialAgreementDashboard = () => {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 bg-slate-50/50 min-h-screen">
+      {/* Top Warning Banner for Missing Signature */}
+      {!hasSignature && (
+        <div className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded-xl shadow-sm flex items-center gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="bg-red-100 p-2 rounded-full">
+            <X className="h-5 w-5 text-red-600" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-red-800">Signature Required | التوقيع مطلوب</h3>
+            <p className="text-xs text-red-700 mt-0.5">
+              Your digital signature is not inserted. Please add it to enable document verification. | 
+              توقيعك الرقمي غير مدرج. يرجى إضافته لتمكين التحقق من المستندات.
+            </p>
+          </div>
+        </div>
+      )}
+
       {isProcessing && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg shadow-lg flex flex-col items-center">
@@ -2246,7 +2276,7 @@ const FinancialAgreementDashboard = () => {
 
         {/* Signature Popup Modal */}
         <Dialog open={isSignatureModalOpen} onOpenChange={setIsSignatureModalOpen}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogContent id="financial-signature-modal" className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-2xl font-bold flex items-center gap-2">
                 <PenTool className="h-6 w-6 text-green-600" />
@@ -2300,7 +2330,7 @@ const FinancialAgreementDashboard = () => {
                         document.body.removeChild(a);
                       } catch (error: any) {
                         console.error("Download error:", error);
-                        Swal.fire({ title: 'Error', text: error.message, icon: 'error' });
+                        Swal.fire({ title: 'Error', text: error.message, icon: 'error', target: "#financial-signature-modal" });
                       } finally {
                         setIsPdfLoading(false);
                       }
@@ -2360,11 +2390,21 @@ const FinancialAgreementDashboard = () => {
                   onClick={async () => {
                     if (!guardianSignaturePad || !currentSigningAgreement?.rawData) return;
                     if (guardianSignaturePad.isEmpty()) {
-                      Swal.fire({ title: 'Warning', text: "Please provide the guardian signature", icon: 'warning' });
+                      Swal.fire({ 
+                        title: 'Warning', 
+                        text: "Please provide the guardian signature", 
+                        icon: 'warning',
+                        target: "#financial-signature-modal"
+                      });
                       return;
                     }
                     if (!savedOfficerSignature) {
-                      Swal.fire({ title: 'Error', text: "Officer signature not found in profile.", icon: 'error' });
+                      Swal.fire({ 
+                        title: 'Error', 
+                        text: "Officer signature not found in profile.", 
+                        icon: 'error',
+                        target: "#financial-signature-modal"
+                      });
                       return;
                     }
 
@@ -2452,14 +2492,42 @@ const FinancialAgreementDashboard = () => {
                       }
 
                       await loadData();
+                      
+                      // Update the selected student object locally so the modal UI updates immediately
+                      if (selectedStudent) {
+                        const updatedAgreements = (selectedStudent.allAgreements || []).map(a => 
+                          a.id === agreementId ? { ...a, is_verified_agreement_pdf: true } : a
+                        );
+                        
+                        setSelectedStudent({
+                          ...selectedStudent,
+                          financial_agreement: {
+                            ...selectedStudent.financial_agreement!,
+                            is_verified_agreement_pdf: true
+                          },
+                          allAgreements: updatedAgreements
+                        });
+                      }
+
                       setIsSignatureModalOpen(false);
                       setCurrentSigningAgreement(null);
                       guardianSignaturePad.clear();
 
-                      Swal.fire({ title: 'Success', text: 'Agreement signed successfully!', icon: 'success', timer: 5000 });
+                      Swal.fire({ 
+                        title: 'Success', 
+                        text: 'Agreement signed successfully!', 
+                        icon: 'success', 
+                        timer: 5000,
+                        target: "#financial-signature-modal"
+                      });
                     } catch (error: any) {
                       console.error("Signing error:", error);
-                      Swal.fire({ title: 'Error', text: error.message, icon: 'error' });
+                      Swal.fire({ 
+                        title: 'Error', 
+                        text: error.message, 
+                        icon: 'error',
+                        target: "#financial-signature-modal"
+                      });
                     } finally {
                       setIsProcessing(false);
                     }
