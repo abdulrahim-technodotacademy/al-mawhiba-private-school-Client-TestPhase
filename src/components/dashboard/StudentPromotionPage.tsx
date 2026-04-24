@@ -498,7 +498,7 @@ const StudentPromotionPage = () => {
                                     </div>
                                 </div>
                                 <div className="md:col-span-2 lg:col-span-1">
-                                    <DetailField id={`${type}-address`} prefix={config.idPrefix} label="Address | العنوان" value={data?.address} required />
+                                    <DetailField id={`${type}-address`} prefix={config.idPrefix} label="Address | العنوان" value={data?.address || data?.other_datas?.address} required />
                                 </div>
                             </>
                         ) : (
@@ -633,7 +633,7 @@ const StudentPromotionPage = () => {
                                     <div className="md:col-span-3 border-t border-gray-50 pt-8 mt-2" />
 
                                     <DetailField label="Governorate" value={student?.governance || student?.state} />
-                                    <DetailField label="City | المدينة" value={student?.city} />
+                                    <DetailField label="City | المدينة" value={student?.city || student?.other_datas?.city} />
                                     <div className="md:col-span-1">
                                         <DetailField label="Full Address | الشارع" value={student?.address || student?.other_datas?.address} />
                                     </div>
