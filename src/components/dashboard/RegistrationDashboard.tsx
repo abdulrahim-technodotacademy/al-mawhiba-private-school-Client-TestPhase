@@ -349,7 +349,7 @@ const verifyStudent = async (studentId: string) => {
     const token = localStorage.getItem("accessToken");
 
     const response = await fetch(
-      `${import.meta.env.VITE_API_BASE_URL}/students/student/${studentId}/`,
+      `${import.meta.env.VITE_API_BASE_URL}/students/students/${studentId}/`,
       {
         method: "PATCH",
         headers: {
@@ -394,7 +394,7 @@ const rejectStudent = async (studentId: string) => {
     const token = localStorage.getItem("accessToken");
 
     const response = await fetch(
-      `${import.meta.env.VITE_API_BASE_URL}/students/student/${studentId}/`,
+      `${import.meta.env.VITE_API_BASE_URL}/students/students/${studentId}/`,
       {
         method: "PATCH", // or "PUT" if your backend expects full replacement
         headers: {
