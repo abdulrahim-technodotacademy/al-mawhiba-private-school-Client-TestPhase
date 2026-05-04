@@ -273,6 +273,14 @@ function NewRegistrationForPublic() {
       if (!formData.en_first_name) newErrors.en_first_name = "English naming is required to save a draft | الاسم بالإنجليزي مطلوب لحفظ المسودة";
     }
 
+    if (formData.google_map_location_url) {
+      try {
+        new URL(formData.google_map_location_url);
+      } catch (_) {
+        newErrors.google_map_location_url = "Please enter a valid URL | يرجى إدخال رابط صحيح";
+      }
+    }
+
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       setIsSubmitting(false);
@@ -696,7 +704,7 @@ function NewRegistrationForPublic() {
         <FullPageLoader />
       )}
 
-      <Card className="max-w-6xl mx-auto mt-20 p-10 bg-white shadow-lg">
+      <Card className="max-w-6xl mx-auto mt-4 sm:mt-10 md:mt-20 p-4 sm:p-6 md:p-10 bg-white shadow-lg border-t-4 border-t-red-800">
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle className="flex items-center gap-2">
             <UserPlus className="h-5 w-5" />
@@ -704,17 +712,17 @@ function NewRegistrationForPublic() {
           </CardTitle>
 
         </CardHeader>
-        <CardContent>
-          <form key={formKey} onSubmit={handleSubmit} className="space-y-14">
+        <CardContent className="p-2 sm:p-4 md:p-6">
+          <form key={formKey} onSubmit={handleSubmit} className="space-y-8 sm:space-y-10 md:space-y-14">
             {/* Responsible Person Selection Block */}
             <div className="space-y-8 bg-primary/5 p-6 rounded-2xl border border-primary/20 shadow-sm">
               <div className="text-center space-y-6">
-                <h3 className="text-xl md:text-2xl font-bold text-gray-800 flex flex-col gap-2">
+                <h3 className="text-lg md:text-xl lg:text-2xl font-bold text-gray-800 flex flex-col gap-2">
                   <span dir="rtl">من المسؤول المباشر عن الطالب ؟</span>
-                  <span className="text-primary">Who is directly responsible for the student?</span>
+                  <span className="text-red-800">Who is directly responsible for the student?</span>
                 </h3>
 
-                <div className="grid grid-cols-3 gap-4 md:gap-8 max-w-3xl mx-auto py-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-8 max-w-3xl mx-auto py-4">
                   {RELATIONSHIP_OPTIONS.map((option) => (
                     <button
                       key={option.value}
@@ -732,13 +740,13 @@ function NewRegistrationForPublic() {
                       className={`flex flex-col items-center gap-3 group transition-all duration-300 ${formData.relationship === option.value ? 'scale-110' : 'opacity-70 hover:opacity-100'
                         }`}
                     >
-                      <div className={`w-20 h-20 md:w-28 md:h-28 rounded-full border-4 flex items-center justify-center transition-all duration-300 shadow-md ${formData.relationship === option.value
-                        ? 'border-primary bg-primary text-white elevation-lg'
+                      <div className={`w-16 h-16 sm:w-20 sm:h-20 md:w-28 md:h-28 rounded-full border-4 flex items-center justify-center transition-all duration-300 shadow-md ${formData.relationship === option.value
+                        ? 'border-red-800 bg-red-800 text-white elevation-lg'
                         : 'border-white bg-white text-gray-400 group-hover:border-blue-200'
                         }`}>
-                        <User className={`h-10 w-10 md:h-14 md:w-14 ${formData.relationship === option.value ? 'animate-pulse' : ''}`} />
+                        <User className={`h-8 w-8 sm:h-10 sm:w-10 md:h-14 md:w-14 ${formData.relationship === option.value ? 'animate-pulse' : ''}`} />
                       </div>
-                      <span className={`font-bold text-base md:text-lg transition-colors ${formData.relationship === option.value ? 'text-primary/80' : 'text-gray-500'
+                      <span className={`font-bold text-sm sm:text-base md:text-lg transition-colors ${formData.relationship === option.value ? 'text-red-800' : 'text-gray-500'
                         }`}>
                         {option.label}
                       </span>
@@ -1637,7 +1645,9 @@ function NewRegistrationForPublic() {
                       })
                     }
                     placeholder="https://maps.google.com/..."
+                    className={errors.google_map_location_url ? 'border-red-500 ring-1 ring-red-500' : ''}
                   />
+                  {errors.google_map_location_url && <p className="text-red-500 text-xs font-semibold mt-1">{errors.google_map_location_url}</p>}
                 </div>
 
                 <div>

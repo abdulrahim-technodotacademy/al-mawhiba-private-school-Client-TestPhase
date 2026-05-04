@@ -61,7 +61,8 @@ const SignatureManagementModal = ({ isOpen, onClose }: SignatureManagementModalP
         title: "Empty Pad", 
         text: "Please draw your signature first", 
         icon: "warning",
-        target: "#signature-modal-content"
+        scrollbarPadding: false,
+        heightAuto: false
       });
       return;
     }
@@ -100,7 +101,8 @@ const SignatureManagementModal = ({ isOpen, onClose }: SignatureManagementModalP
           icon: "success", 
           timer: 2000, 
           showConfirmButton: false,
-          target: "#signature-modal-content"
+          scrollbarPadding: false,
+          heightAuto: false
         });
       }
     } catch (error: any) {
@@ -109,7 +111,8 @@ const SignatureManagementModal = ({ isOpen, onClose }: SignatureManagementModalP
         title: "Save Failed", 
         text: error.response?.data?.error || "We couldn't save your signature. Please try again.", 
         icon: "error",
-        target: "#signature-modal-content"
+        scrollbarPadding: false,
+        heightAuto: false
       });
     } finally {
       setIsSaving(false);
@@ -124,7 +127,8 @@ const SignatureManagementModal = ({ isOpen, onClose }: SignatureManagementModalP
       showCancelButton: true,
       confirmButtonColor: "#ef4444",
       confirmButtonText: "Yes, Clear It",
-      target: "#signature-modal-content"
+      scrollbarPadding: false,
+      heightAuto: false
     });
 
     if (result.isConfirmed) {
@@ -144,14 +148,16 @@ const SignatureManagementModal = ({ isOpen, onClose }: SignatureManagementModalP
           text: "Signature removed.", 
           icon: "success", 
           timer: 1500,
-          target: "#signature-modal-content"
+          scrollbarPadding: false,
+          heightAuto: false
         });
       } catch (error) {
         Swal.fire({
           title: "Error", 
           text: "Failed to delete signature", 
           icon: "error",
-          target: "#signature-modal-content"
+          scrollbarPadding: false,
+          heightAuto: false
         });
       } finally {
         setIsLoading(false);

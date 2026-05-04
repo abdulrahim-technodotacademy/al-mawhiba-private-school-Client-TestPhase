@@ -2330,7 +2330,7 @@ const FinancialAgreementDashboard = () => {
                         document.body.removeChild(a);
                       } catch (error: any) {
                         console.error("Download error:", error);
-                        Swal.fire({ title: 'Error', text: error.message, icon: 'error', target: "#financial-signature-modal" });
+                        Swal.fire({ title: 'Error', text: error.message, icon: 'error', scrollbarPadding: false, heightAuto: false });
                       } finally {
                         setIsPdfLoading(false);
                       }
@@ -2394,7 +2394,8 @@ const FinancialAgreementDashboard = () => {
                         title: 'Warning', 
                         text: "Please provide the guardian signature", 
                         icon: 'warning',
-                        target: "#financial-signature-modal"
+                        scrollbarPadding: false,
+                        heightAuto: false
                       });
                       return;
                     }
@@ -2403,7 +2404,8 @@ const FinancialAgreementDashboard = () => {
                         title: 'Error', 
                         text: "Officer signature not found in profile.", 
                         icon: 'error',
-                        target: "#financial-signature-modal"
+                        scrollbarPadding: false,
+                        heightAuto: false
                       });
                       return;
                     }
@@ -2518,7 +2520,8 @@ const FinancialAgreementDashboard = () => {
                         text: 'Agreement signed successfully!', 
                         icon: 'success', 
                         timer: 5000,
-                        target: "#financial-signature-modal"
+                        scrollbarPadding: false,
+                        heightAuto: false
                       });
                     } catch (error: any) {
                       console.error("Signing error:", error);
@@ -2526,7 +2529,8 @@ const FinancialAgreementDashboard = () => {
                         title: 'Error', 
                         text: error.message, 
                         icon: 'error',
-                        target: "#financial-signature-modal"
+                        scrollbarPadding: false,
+                        heightAuto: false
                       });
                     } finally {
                       setIsProcessing(false);

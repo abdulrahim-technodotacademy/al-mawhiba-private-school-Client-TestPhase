@@ -1269,9 +1269,9 @@ function StudentDetailsPage() {
 
     return (
         <div className="p-6 space-y-6">
-            <div className="flex justify-between items-center">
-                <h1 className="text-2xl font-bold">Student Details</h1>
-                <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <h1 className="text-xl sm:text-2xl font-bold">Student Details</h1>
+                <div className="flex flex-wrap gap-2 w-full sm:w-auto">
                     {!isEditing && student.status !== 'draft' && (
                         <>
                             <Button

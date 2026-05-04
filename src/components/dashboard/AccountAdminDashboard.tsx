@@ -236,7 +236,7 @@ const AccountAdminDashboard = () => {
             initiallyPaid: initialPaidValue,
             installmentType: installmentTypeText,
             paidInstallments: getPaidInstallmentsList(),
-            paymentStatus: paymentComplete ? "Completed" : `${paidFlags} of ${totalInstallments} payments`,
+            paymentStatus: paymentComplete ? "Complete | مكتمل" : "Pending | بانتظار الدفع",
             paymentComplete,
             paymentHistory,
             hasUnverifiedPayments: paymentHistory.some((p: any) => !p.is_verified_by_accountant),
@@ -615,8 +615,8 @@ const AccountAdminDashboard = () => {
     const totalFees = parseFloat(agreement.total_fees_omr);
     const payments = [];
 
-    // Calculate remaining amount to prevent overpayment
-    const remainingAmount = totalFees - student.paidAmount;
+    // Calculate remaining amount based on student.pendingAmount (which is ag.balance_amount)
+    const remainingAmount = student.pendingAmount;
 
     // For one-time payment plan
     if (agreement.installment_plan === "one") {
@@ -624,95 +624,79 @@ const AccountAdminDashboard = () => {
         value: "full",
         label: `Full Payment (${remainingAmount.toFixed(2)} OMR)`,
         amount: remainingAmount.toFixed(2),
-        isFixed: false
+        isFixed: true
       }];
     }
 
+    const initialAmount = parseFloat(agreement.installment1_amount || "0");
+    const balanceAfterInitial = totalFees - initialAmount;
+
     // For two-installment plan
     if (agreement.installment_plan === "two") {
-      const inst1 = parseFloat(agreement.installment1_amount || "0");
-      const inst2 = parseFloat(agreement.installment2_amount || "0");
-
       if (!agreement.first_installment_paid) {
         payments.push({
           value: "first",
-          label: `Initial Payment (${inst1.toFixed(3)} OMR)`,
-          amount: inst1.toFixed(2),
-          isFixed: false
+          label: `Initial Payment (${initialAmount.toFixed(3)} OMR)`,
+          amount: initialAmount.toFixed(2),
+          isFixed: true
         });
-      }
-
-      if (agreement.first_installment_paid && !agreement.second_installment_paid) {
+      } else if (!agreement.second_installment_paid) {
+        // For 2 installments, the 2nd one is the final balance and is fixed
         payments.push({
           value: "second",
-          label: `Second Installment (${inst2.toFixed(3)} OMR)`,
-          amount: inst2.toFixed(2),
-          isFixed: false
+          label: `Second Installment (${remainingAmount.toFixed(3)} OMR)`,
+          amount: remainingAmount.toFixed(2),
+          isFixed: true 
         });
       }
-
-      return payments;
     }
 
     // For four-installment plan
     if (agreement.installment_plan === "four") {
-      const inst1 = parseFloat(agreement.installment1_amount || "0");
-      const inst2 = parseFloat(agreement.installment2_amount || "0");
-
-      // Dynamic calculation for 3rd and 4th installments based on remaining balance
-      const paidSoFar = student.paidAmount; // already includes initiallyPaid from fetchStudentData
-      const remainingForFuture = totalFees - paidSoFar;
-
-      // Determine how many installments are left excluding the current one we are looking at
       if (!agreement.first_installment_paid) {
         payments.push({
           value: "first",
-          label: `Initial Payment (${inst1.toFixed(3)} OMR)`,
-          amount: inst1.toFixed(2),
-          isFixed: false
+          label: `Initial Payment (${initialAmount.toFixed(3)} OMR)`,
+          amount: initialAmount.toFixed(2),
+          isFixed: true
         });
+      } else {
+        // Pre-fill calculation: (Total - Initial) / 3
+        const standardInstallment = balanceAfterInitial / 3;
+        
+        if (!agreement.second_installment_paid) {
+          payments.push({
+            value: "second",
+            label: `Second Installment (${standardInstallment.toFixed(3)} OMR)`,
+            amount: standardInstallment.toFixed(2),
+            isFixed: false // Editable
+          });
+        } else if (!agreement.third_installment_paid) {
+          payments.push({
+            value: "third",
+            label: `Third Installment (${standardInstallment.toFixed(3)} OMR)`,
+            amount: standardInstallment.toFixed(2),
+            isFixed: false // Editable
+          });
+        } else if (!agreement.fourth_installment_paid) {
+          payments.push({
+            value: "fourth",
+            label: `Fourth Installment (${remainingAmount.toFixed(3)} OMR)`,
+            amount: remainingAmount.toFixed(2),
+            isFixed: true // Last one is fixed buffer
+          });
+        }
       }
-
-      if (agreement.first_installment_paid && !agreement.second_installment_paid) {
-        payments.push({
-          value: "second",
-          label: `Second Installment (${inst2.toFixed(3)} OMR)`,
-          amount: inst2.toFixed(2),
-          isFixed: false
-        });
-      }
-
-      if (agreement.second_installment_paid && !agreement.third_installment_paid) {
-        // Recalculate based on remaining balance / 2
-        const calculatedAmount = (remainingForFuture / 2);
-        payments.push({
-          value: "third",
-          label: `Third Installment (${calculatedAmount.toFixed(3)} OMR)`,
-          amount: calculatedAmount.toFixed(2),
-          isFixed: false
-        });
-      }
-
-      if (agreement.third_installment_paid && !agreement.fourth_installment_paid) {
-        // Last installment is always the remaining balance
-        payments.push({
-          value: "fourth",
-          label: `Fourth Installment (${remainingForFuture.toFixed(3)} OMR)`,
-          amount: remainingForFuture.toFixed(2),
-          isFixed: false
-        });
-      }
-
-      return payments;
     }
 
-    if (payments.length === 0 && remainingAmount > 0.01) {
-      payments.push({
-        value: "full",
-        label: `Full Payment (${remainingAmount.toFixed(2)} OMR)`,
-        amount: remainingAmount.toFixed(2),
-        isFixed: false
-      });
+    // Always add "Other Payment" option for 2 and 4 installments if balance remains AND initial is paid
+    if (agreement.installment_plan !== "one" && agreement.first_installment_paid && remainingAmount > 0.01) {
+       payments.push({
+          value: "other",
+          label: `Other Payment | دفعة أخرى (${remainingAmount.toFixed(3)} OMR)`,
+          amount: remainingAmount.toFixed(2),
+          isFixed: false
+       });
     }
 
     return payments;
@@ -1191,20 +1175,18 @@ const AccountAdminDashboard = () => {
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Name | الاسم
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="hidden lg:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Class | الصف
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="hidden xl:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Year | السنة
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="hidden lg:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Status | الحالة
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="hidden md:table-cell px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Total Fees | الرسوم الكلية
                         </th>
-
-
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Total Paid | إجمالي المدفوعات
                         </th>
@@ -1227,18 +1209,25 @@ const AccountAdminDashboard = () => {
                               {student.admissionNumber}
                             </td>
                             <td
-                              className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 cursor-pointer hover:text-blue-600 hover:underline"
+                              className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 cursor-pointer hover:text-blue-600"
                               onClick={() => showStudentDetails(student)}
                             >
-                              {student.name || student.nameAr}
+                              <div className="flex flex-col">
+                                <span className="font-medium text-gray-900 truncate max-w-[120px] sm:max-w-xs" title={student.name}>
+                                  {student.name || student.nameAr}
+                                </span>
+                                <span className="lg:hidden text-[10px] text-gray-400 mt-0.5">
+                                  {student.grade} {student.section ? `- ${student.section}` : ''} | {student.academicYear}
+                                </span>
+                              </div>
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <td className="hidden lg:table-cell px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                               {student.grade} {student.section ? `- ${student.section}` : ''}
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <td className="hidden xl:table-cell px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                               {student.academicYear}
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
+                            <td className="hidden lg:table-cell px-6 py-4 whitespace-nowrap">
                               <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${student.status === 'Active'
                                 ? 'bg-green-100 text-green-800'
                                 : 'bg-gray-100 text-gray-800'
@@ -1246,7 +1235,7 @@ const AccountAdminDashboard = () => {
                                 {student.status}
                               </span>
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <td className="hidden md:table-cell px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                               {student.totalFees.toFixed(2)} OMR
                             </td>
 
@@ -1263,7 +1252,7 @@ const AccountAdminDashboard = () => {
                                   'bg-green-100 text-green-800' :
                                   (student.paidAmount > 0 ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800')
                                   }`}>
-                                  {student.paymentComplete ? 'Complete' : student.paymentStatus}
+                                  {student.paymentStatus}
                                 </span>
                                 <span className="text-[10px] text-gray-400 font-medium ml-1">
                                   {student.installmentType}
@@ -1403,7 +1392,7 @@ const AccountAdminDashboard = () => {
                               </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
-                              {/* Show Initial Paid Amount as the first entry if it exists */}
+                              {/* Show Initial Amount as the first entry if it exists */}
                               {selectedStudent.paymentHistory.map((payment: any) => (
                                 <tr key={payment.id}>
                                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{payment.date_of_payment}</td>
@@ -1471,7 +1460,7 @@ const AccountAdminDashboard = () => {
                     </Card>
                     <Card>
                       <CardHeader>
-                        <CardTitle className="text-sm font-medium">Initial Paid</CardTitle>
+                        <CardTitle className="text-sm font-medium">Initial Amount</CardTitle>
                       </CardHeader>
                       <CardContent>
                         <p className="text-xl text-blue-600">{selectedStudent.initiallyPaid.toFixed(2)} OMR</p>
@@ -1701,14 +1690,9 @@ const AccountAdminDashboard = () => {
                     </div>
 
                     {(() => {
-                      const plan = selectedStudent.financialAgreement?.installment_plan;
                       const type = paymentData.paymentStatus;
-
-                      const isFixed =
-                        type === 'full' || 
-                        type === 'first' ||
-                        (plan === 'two' && type === 'second') ||
-                        (plan === 'four' && type === 'fourth');
+                      const selectedInst = availableInstallments.find(i => i.value === type);
+                      const isFixed = selectedInst?.isFixed ?? false;
 
                       return (
                         <div className="space-y-2">
@@ -1716,17 +1700,17 @@ const AccountAdminDashboard = () => {
                           <Input
                             id="amount"
                             type="number"
-                            min="0"
-                            max={Math.ceil(selectedStudent?.totalFees - selectedStudent?.paidAmount)}
+                            min="1"
+                            max={selectedStudent?.pendingAmount}
                             value={paymentData.amount}
                             onChange={(e) => {
                               if (isFixed) return;
-                              const maxAmount = selectedStudent?.totalFees - selectedStudent?.paidAmount;
+                              const maxAmount = selectedStudent?.pendingAmount;
                               let val = e.target.value;
                               
                               const numVal = parseFloat(val);
                               if (!isNaN(numVal) && numVal > maxAmount) {
-                                val = maxAmount.toString();
+                                val = maxAmount.toFixed(2);
                               }
                               
                               setPaymentData({
@@ -1740,7 +1724,7 @@ const AccountAdminDashboard = () => {
                             disabled={availableInstallments.length === 0}
                           />
                           <p className="text-xs text-gray-500">
-                            {isFixed ? "Fixed amount for this installment." : `Maximum allowed: ${(selectedStudent?.totalFees - selectedStudent?.paidAmount).toFixed(2)} OMR`}
+                            {isFixed ? "Fixed amount for this installment." : `Minimum: 1 OMR, Maximum: ${selectedStudent?.pendingAmount.toFixed(2)} OMR`}
                           </p>
                         </div>
                       );

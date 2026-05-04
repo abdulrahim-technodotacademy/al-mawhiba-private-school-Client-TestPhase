@@ -258,6 +258,14 @@ const NewStudentRegistrationForm = () => {
       if (!formData.en_first_name) newErrors.en_first_name = "English naming is required to save a draft | الاسم بالإنجليزي مطلوب لحفظ المسودة";
     }
 
+    if (formData.google_map_location_url) {
+      try {
+        new URL(formData.google_map_location_url);
+      } catch (_) {
+        newErrors.google_map_location_url = "Please enter a valid URL | يرجى إدخال رابط صحيح";
+      }
+    }
+
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       setIsSubmitting(false);
@@ -1589,8 +1597,9 @@ const NewStudentRegistrationForm = () => {
                       value={formData.google_map_location_url}
                       onChange={(e) => setFormData({ ...formData, google_map_location_url: e.target.value })}
                       placeholder="https://maps.google.com/..."
-                      className="rounded-xl shadow-sm border-gray-200 focus:ring-2 focus:ring-primary/20 transition-all"
+                      className={`rounded-xl shadow-sm ${errors.google_map_location_url ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-200 focus:ring-2 focus:ring-primary/20 transition-all'}`}
                     />
+                    {errors.google_map_location_url && <p className="text-red-500 text-xs font-semibold mt-1">{errors.google_map_location_url}</p>}
                   </div>
 
 

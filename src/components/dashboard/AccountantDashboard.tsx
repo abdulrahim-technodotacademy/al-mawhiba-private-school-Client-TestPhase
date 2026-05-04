@@ -442,8 +442,8 @@ const AccountantDashboard = () => {
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold">Adm No</th>
                   <th className="px-4 py-3 text-left font-semibold">Student Name</th>
-                  <th className="px-4 py-3 text-left font-semibold">Grade/Section</th>
-                  <th className="px-4 py-3 text-left font-semibold">Academic Year</th>
+                  <th className="hidden md:table-cell px-4 py-3 text-left font-semibold">Grade/Section</th>
+                  <th className="hidden lg:table-cell px-4 py-3 text-left font-semibold">Academic Year</th>
                   <th className="px-4 py-3 text-center font-semibold">Status</th>
                   <th className="px-4 py-3 text-right font-semibold">Actions</th>
                 </tr>
@@ -487,14 +487,17 @@ const AccountantDashboard = () => {
                             className="text-left hover:text-red-700 transition-colors group"
                           >
                             <div className="font-medium text-blue-600 group-hover:underline">{enFullName}</div>
-                            <div className="text-xs text-gray-400 mt-0.5" dir="rtl">{arFullName}</div>
+                            <div className="md:hidden text-[10px] text-gray-500 mt-1">
+                              {student.admission_class?.department_name} {student.section?.name ? `(${student.section.name})` : ''}
+                            </div>
+                            <div className="text-[10px] text-gray-400 mt-0.5" dir="rtl">{arFullName}</div>
                           </button>
                         </td>
-                        <td className="px-4 py-3 text-gray-600">
+                        <td className="hidden md:table-cell px-4 py-3 text-gray-600">
                           {student.admission_class?.department_name} 
                           {student.section?.name && <Badge variant="outline" className="ml-2 py-0 h-5 text-[10px]">{student.section.name}</Badge>}
                         </td>
-                        <td className="px-4 py-3 text-gray-600">
+                        <td className="hidden lg:table-cell px-4 py-3 text-gray-600">
                           {latestAg?.academic_year_name || academicYears.find(y => y.id === latestAg?.academic_year)?.name || 'N/A'}
                         </td>
                         <td className="px-4 py-3 text-center">
@@ -529,7 +532,7 @@ const AccountantDashboard = () => {
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold">Adm No</th>
                   <th className="px-4 py-3 text-left font-semibold">Student Name</th>
-                  <th className="px-4 py-3 text-left font-semibold">Contract No</th>
+                  <th className="hidden md:table-cell px-4 py-3 text-left font-semibold">Contract No</th>
                   <th className="px-4 py-3 text-right font-semibold">Total</th>
                   <th className="px-4 py-3 text-right font-semibold">Paid</th>
                   <th className="px-4 py-3 text-right font-semibold">Balance</th>
@@ -560,10 +563,13 @@ const AccountantDashboard = () => {
                             className="text-left group"
                           >
                             <div className="font-medium text-blue-600 group-hover:underline">{names.en}</div>
+                            <div className="md:hidden text-[10px] text-gray-500 mt-1">
+                              Contract: {ag.contract_number}
+                            </div>
                             <div className="text-[10px] text-gray-400" dir="rtl">{names.ar}</div>
                           </button>
                         </td>
-                        <td className="px-4 py-3 font-medium text-gray-700">{ag.contract_number}</td>
+                        <td className="hidden md:table-cell px-4 py-3 font-medium text-gray-700">{ag.contract_number}</td>
                         <td className="px-4 py-3 text-right font-semibold">{ag.total_fees_omr}</td>
                         <td className="px-4 py-3 text-right text-green-600 font-semibold">{ag.initial_paid_amount || 0}</td>
                         <td className="px-4 py-3 text-right text-red-600 font-semibold">{ag.balance_amount || 0}</td>
