@@ -77,7 +77,11 @@ const AccountantDashboard = () => {
       showCancelButton: true,
       confirmButtonColor: '#d33',
       cancelButtonColor: '#3085d6',
-      confirmButtonText: 'Yes, delete everything!'
+      confirmButtonText: 'Yes, delete everything!',
+      target: 'body',
+      customClass: {
+        container: 'swal-top-layer'
+      }
     });
 
     if (result.isConfirmed) {
@@ -98,7 +102,12 @@ const AccountantDashboard = () => {
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#d33',
-      confirmButtonText: 'Yes, delete contract'
+      confirmButtonText: 'Yes, delete contract',
+      // Reset to body for perfect alignment
+      target: 'body',
+      customClass: {
+        container: 'swal-top-layer'
+      }
     });
 
     if (result.isConfirmed) {
@@ -140,6 +149,10 @@ const AccountantDashboard = () => {
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#d33',
+      target: 'body',
+      customClass: {
+        container: 'swal-top-layer'
+      }
     });
     if (result.isConfirmed) {
       try {
@@ -179,6 +192,10 @@ const AccountantDashboard = () => {
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#d33',
+      target: 'body',
+      customClass: {
+        container: 'swal-top-layer'
+      }
     });
     if (result.isConfirmed) {
       try {

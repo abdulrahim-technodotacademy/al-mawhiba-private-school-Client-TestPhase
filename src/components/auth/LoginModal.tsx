@@ -219,6 +219,9 @@ const handleLogin = async (e: React.FormEvent, role: string) => {
       case "Accountant Controller":
         navigate("/dashboard/accountant");
         break;
+      case "Student List":
+        navigate("/dashboard/student-list");
+        break;
       default:
         navigate("/dashboard");
     }

@@ -748,42 +748,56 @@ const AccountAdminDashboard = () => {
     openSignatureModal(payment);
   };
 
-  const handleViewReceipt = (payment: any) => {
-    const url = getFullUrl(payment.payment_slip);
-    if (url) {
-      window.open(url, '_blank');
-    } else {
-      Swal.fire({
-        title: 'Error!',
-        text: 'Receipt file not found.',
-        icon: 'error',
-        timer: 5000,
-        timerProgressBar: true,
-        confirmButtonText: 'OK'
+  const handleViewReceipt = async (payment: any) => {
+    const paymentId = payment.id;
+    if (!paymentId) return;
+
+    const newWindow = window.open('about:blank', '_blank');
+    if (newWindow) {
+      newWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>View Receipt | AL-MAWHIBA</title>
+            <style>
+              body { font-family: system-ui, -apple-system, sans-serif; background-color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; color: #1e293b; }
+              .card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); text-align: center; }
+              .spinner { width: 32px; height: 32px; border: 3px solid #f1f5f9; border-bottom-color: #fca5a5; border-radius: 50%; display: inline-block; animation: rotation 1s linear infinite; margin-bottom: 1rem; }
+              @keyframes rotation { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+            </style>
+          </head>
+          <body>
+            <div class="card">
+              <div class="spinner"></div>
+              <div style="font-weight: 600;">Loading Receipt PDF...</div>
+              <div style="font-size: 12px; color: #64748b; margin-top: 8px;">Fetching payment record...</div>
+            </div>
+          </body>
+        </html>
+      `);
+    }
+
+    try {
+      const response = await api.get(`/students/students/${paymentId}/download-payment-receipt/`, {
+        responseType: 'blob'
       });
+
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+
+      if (newWindow) {
+        newWindow.location.href = url;
+      } else {
+        window.open(url, '_blank');
+      }
+    } catch (error) {
+      console.error("Failed to view receipt:", error);
+      if (newWindow) newWindow.close();
+      toast.error("Failed to load receipt. Please try again.");
     }
   };
 
-  const handleDownloadSignedReceipt = (payment: any) => {
-    const url = getFullUrl(payment.payment_slip);
-    if (url) {
-      const a = document.createElement('a');
-      a.href = url;
-      a.target = '_blank';
-      a.download = `receipt-${payment.id}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } else {
-      Swal.fire({
-        title: 'Error!',
-        text: 'Receipt file not found.',
-        icon: 'error',
-        timer: 5000,
-        timerProgressBar: true,
-        confirmButtonText: 'OK'
-      });
-    }
+  const handleDownloadSignedReceipt = async (payment: any) => {
+    await handleDownloadReceipt(payment.id);
   };
 
   const dataURLtoBlob = (dataurl: string) => {
